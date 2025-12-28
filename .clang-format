@@ -1,0 +1,12 @@
+﻿---
+BasedOnStyle: Google
+AlignAfterOpenBracket: DontAlign
+DerivePointerAlignment: 'false'
+IncludeBlocks: Regroup
+MaxEmptyLinesToKeep: '2'
+PointerAlignment: Left
+SortIncludes: 'false'
+SpaceBeforeCtorInitializerColon: 'false'
+SpaceBeforeInheritanceColon: 'false'
+
+...
