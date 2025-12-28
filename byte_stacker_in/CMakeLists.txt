@@ -20,7 +20,12 @@ set(HEADER_FILES
   "../common/trunklink.h"
 )
 
+find_package(Threads REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system)
+
 add_executable (${PROJECT_NAME} ${SOURCE_FILES} ${HEADER_FILES})
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET byte_stacker_in PROPERTY CXX_STANDARD 20)
