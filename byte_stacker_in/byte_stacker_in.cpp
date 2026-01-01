@@ -9,6 +9,7 @@
 #include <boost/asio.hpp>
 
 #include "inlink.h"
+#include "trunklink.h"
 
 namespace bai = boost::asio::ip;
 namespace this_coro = boost::asio::this_coro;
@@ -53,9 +54,12 @@ boost::asio::awaitable<void> echo(bai::tcp::socket socket) {
 }
 
 
-// TODO Descrip ???
-boost::asio::awaitable<void> ListenPoints(
-    boost::asio::ip::tcp::endpoint point) {
+/*! Функция слушает одну локальную точку, устанавливает соединения через неё.
+Функция использует архитектуру boost:asio для асинхронной работы
+\param point точка для установки соединений
+\return объект-ожидание для работы в среде asio */
+boost::asio::awaitable<void> ListenLocalPoint(
+    TrunkClient& trc, boost::asio::ip::tcp::endpoint point) {
   auto executor = co_await this_coro::executor;
   bai::tcp::acceptor acceptor(executor, point);
   for (;;) {
@@ -205,6 +209,7 @@ int main(int argc, char** argv) {
     return 3;
   }
 
+
   // Проверка транковых соединений
   // TODO
 
@@ -212,11 +217,14 @@ int main(int argc, char** argv) {
   // TODO
   try {
     boost::asio::io_context ctx(4 /* TODO */);
+    TrunkClient trc(ctx);
+
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) { ctx.stop(); });
 
     for (auto& p : lps) {
-      boost::asio::co_spawn(ctx, ListenPoints(p), boost::asio::detached);
+      boost::asio::co_spawn(
+          ctx, ListenLocalPoint(trc, p), boost::asio::detached);
     }
 
     ctx.run();
