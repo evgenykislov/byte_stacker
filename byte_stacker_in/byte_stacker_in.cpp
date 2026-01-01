@@ -11,6 +11,7 @@
 #include "inlink.h"
 
 namespace bai = boost::asio::ip;
+namespace this_coro = boost::asio::this_coro;
 
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
@@ -26,6 +27,44 @@ void PrintHelp() {
 
 
 void ListenPoints(std::vector<boost::asio::ip::tcp::endpoint> points) {}
+
+
+boost::asio::awaitable<void> echo_once(bai::tcp::socket& socket) {
+  char data[128];
+  std::size_t n = co_await socket.async_read_some(
+      boost::asio::buffer(data), boost::asio::use_awaitable);
+  co_await async_write(
+      socket, boost::asio::buffer(data, n), boost::asio::use_awaitable);
+}
+
+
+boost::asio::awaitable<void> echo(bai::tcp::socket socket) {
+  try {
+    for (;;) {
+      // The asynchronous operations to echo a single chunk of data have been
+      // refactored into a separate function. When this function is called, the
+      // operations are still performed in the context of the current
+      // coroutine, and the behaviour is functionally equivalent.
+      co_await echo_once(socket);
+    }
+  } catch (std::exception& e) {
+    std::printf("echo Exception: %s\n", e.what());
+  }
+}
+
+
+// TODO Descrip ???
+boost::asio::awaitable<void> ListenPoints(
+    boost::asio::ip::tcp::endpoint point) {
+  auto executor = co_await this_coro::executor;
+  bai::tcp::acceptor acceptor(executor, point);
+  for (;;) {
+    bai::tcp::socket socket =
+        co_await acceptor.async_accept(boost::asio::use_awaitable);
+    std::cout << "DEBUG: Accept socket" << std::endl;
+    co_spawn(executor, echo(std::move(socket)), boost::asio::detached);
+  }
+}
 
 
 bool ParseLocalPoint(std::string arg, boost::asio::ip::tcp::endpoint& point) {
@@ -50,7 +89,7 @@ bool ParseLocalPoint(std::string arg, boost::asio::ip::tcp::endpoint& point) {
   }
 
   auto adr = b.substr(p + 1);
-  auto p1 = b.find(':');
+  auto p1 = adr.find(':');
   if (p1 == std::string::npos || p1 == 0) {
     std::cerr << "Bad format of address in argument '" << arg << "'"
               << std::endl;
@@ -154,6 +193,35 @@ int main(int argc, char** argv) {
         return 2;
       }
     }
+  }
+
+  if (lps.empty()) {
+    std::wcerr << "Внимание: Не задано ни одной точки входа" << std::endl;
+    return 3;
+  }
+
+  if (trp.empty()) {
+    std::wcerr << "Внимание: Не задано ни одной точки передачи" << std::endl;
+    return 3;
+  }
+
+  // Проверка транковых соединений
+  // TODO
+
+  // Получаем соединения
+  // TODO
+  try {
+    boost::asio::io_context ctx(4 /* TODO */);
+    boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
+    signals.async_wait([&](auto, auto) { ctx.stop(); });
+
+    for (auto& p : lps) {
+      boost::asio::co_spawn(ctx, ListenPoints(p), boost::asio::detached);
+    }
+
+    ctx.run();
+  } catch (std::exception& err) {
+    std::printf("Exception: %s\n", err.what());
   }
 
   return 0;
