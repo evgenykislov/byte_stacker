@@ -3,6 +3,7 @@
 
 #include "byte_stacker_in.h"
 
+#include <map>
 #include <vector>
 #include <utility>
 
@@ -16,6 +17,7 @@ namespace this_coro = boost::asio::this_coro;
 
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
+const size_t kChunkSize = 800;
 
 
 void PrintHelp() {
@@ -27,51 +29,49 @@ void PrintHelp() {
 }
 
 
-void ListenPoints(std::vector<boost::asio::ip::tcp::endpoint> points) {}
+boost::asio::awaitable<void> ProcessPoint(
+    TrunkClient& trc, PointID id, bai::tcp::socket socket) {
+  ConnectID cnt;
+  assert(cnt.is_nil());
 
-
-boost::asio::awaitable<void> echo_once(bai::tcp::socket& socket) {
-  char data[128];
-  std::size_t n = co_await socket.async_read_some(
-      boost::asio::buffer(data), boost::asio::use_awaitable);
-  co_await async_write(
-      socket, boost::asio::buffer(data, n), boost::asio::use_awaitable);
-}
-
-
-boost::asio::awaitable<void> echo(bai::tcp::socket socket) {
   try {
+    cnt = trc.CreateConnect(
+        id, [&socket](ConnectID cnt) { socket.close(); },
+        [](ConnectID cnt, void* data, size_t data_size) {});
     for (;;) {
-      // The asynchronous operations to echo a single chunk of data have been
-      // refactored into a separate function. When this function is called, the
-      // operations are still performed in the context of the current
-      // coroutine, and the behaviour is functionally equivalent.
-      co_await echo_once(socket);
+      char data[kChunkSize];
+      std::size_t n = co_await socket.async_read_some(
+          boost::asio::buffer(data), boost::asio::use_awaitable);
     }
-  } catch (std::exception& e) {
-    std::printf("echo Exception: %s\n", e.what());
+  } catch (std::exception&) {
+    // Чтение прервано. Просто выходим
   }
+
+  trc.ReleaseConnect(cnt);
 }
 
 
 /*! Функция слушает одну локальную точку, устанавливает соединения через неё.
 Функция использует архитектуру boost:asio для асинхронной работы
+\param tpc клиент транковой связи (фактически глобальный экземпляр)
+\param id идентификатор точки
 \param point точка для установки соединений
 \return объект-ожидание для работы в среде asio */
 boost::asio::awaitable<void> ListenLocalPoint(
-    TrunkClient& trc, boost::asio::ip::tcp::endpoint point) {
+    TrunkClient& trc, PointID id, boost::asio::ip::tcp::endpoint point) {
   auto executor = co_await this_coro::executor;
   bai::tcp::acceptor acceptor(executor, point);
   for (;;) {
     bai::tcp::socket socket =
         co_await acceptor.async_accept(boost::asio::use_awaitable);
-    std::cout << "DEBUG: Accept socket" << std::endl;
-    co_spawn(executor, echo(std::move(socket)), boost::asio::detached);
+    co_spawn(executor, ProcessPoint(trc, id, std::move(socket)),
+        boost::asio::detached);
   }
 }
 
 
-bool ParseLocalPoint(std::string arg, boost::asio::ip::tcp::endpoint& point) {
+bool ParseLocalPoint(
+    std::string arg, PointID& id, boost::asio::ip::tcp::endpoint& point) {
   assert(arg.starts_with(kLocalPrefix));
   auto b = arg.substr(kLocalPrefix.size());
   auto p = b.find('=');
@@ -80,10 +80,9 @@ bool ParseLocalPoint(std::string arg, boost::asio::ip::tcp::endpoint& point) {
     return false;
   }
   auto sid = b.substr(0, p);
-  unsigned long id;
   try {
     std::size_t s;
-    id = std::stoul(sid, &s);
+    id = static_cast<PointID>(std::stoul(sid, &s));
     if (s != (std::size_t)p) {
       throw std::runtime_error("bad format of id");
     }
@@ -178,7 +177,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::vector<bai::tcp::endpoint>
+  std::map<PointID, bai::tcp::endpoint>
       lps;  //!< Локальные точки для приёма подключений
   std::vector<bai::udp::endpoint> trp;  //!< Транковые точки для запроса данных
 
@@ -187,8 +186,9 @@ int main(int argc, char** argv) {
 
     if (a.starts_with(kLocalPrefix)) {
       bai::tcp::endpoint ep;
-      if (ParseLocalPoint(a, ep)) {
-        lps.push_back(ep);
+      PointID id;
+      if (ParseLocalPoint(a, id, ep)) {
+        lps[id] = ep;
       } else {
         return 2;
       }
@@ -224,7 +224,7 @@ int main(int argc, char** argv) {
 
     for (auto& p : lps) {
       boost::asio::co_spawn(
-          ctx, ListenLocalPoint(trc, p), boost::asio::detached);
+          ctx, ListenLocalPoint(trc, p.first, p.second), boost::asio::detached);
     }
 
     ctx.run();

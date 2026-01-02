@@ -1,6 +1,7 @@
 #ifndef TRUNKLINK_H
 #define TRUNKLINK_H
 
+#include <mutex>
 #include <utility>
 
 #include <boost/asio.hpp>
@@ -16,17 +17,18 @@ class TrunkClient {
 
   /*! Создать новый "виртуальный" коннект
   \param point идентификатор внешней точки подключения
-  \param OnDisconnect обработчик события разрыва коннекта
-  \param OnData обработчик события прихода данных
+  \param on_disconnect обработчик события разрыва коннекта
+  \param on_data обработчик события прихода данных
   \return идентификатор коннекта. В случае ошибки возвращается пустой
   идентификатор (.is_nil() == true) */
   ConnectID CreateConnect(PointID point,
-      std::function<void(ConnectID)> OnDisconnect,
-      std::function<void(ConnectID, void*, size_t)> OnData);
+      std::function<void(ConnectID)> on_disconnect,
+      std::function<void(ConnectID, void*, size_t)> on_data);
 
-  /*! Разорвать коннект
+  /*! Разорвать коннект. При этом будет вызван обработчик дисконнекта.
+  Допустимо разрывать уже разорванный коннект.
   \param cnt идентификатор коннекта */
-  void ReleaseConnect(ConnectID cnt);
+  void ReleaseConnect(ConnectID cnt) noexcept;
 
   /*! Отправить данные по коннекту
   \param cnt идентификатор коннекта
@@ -42,6 +44,18 @@ class TrunkClient {
   TrunkClient(TrunkClient&&) = delete;
   TrunkClient& operator=(const TrunkClient&) = delete;
   TrunkClient& operator=(TrunkClient&&) = delete;
+
+  struct ConnectInfo {
+    ConnectID ID;
+    std::function<void(ConnectID)> OnDisconnect;
+    std::function<void(ConnectID, void*, size_t)> OnData;
+  };
+
+  std::vector<ConnectInfo> connects_;
+  std::mutex connect_lock_;
+
+
+  std::mt19937 generator_;
 };
 
 
