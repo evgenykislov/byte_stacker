@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
   // TODO
   try {
     boost::asio::io_context ctx(4 /* TODO */);
-    TrunkClient trc(ctx);
+    TrunkClient trc(ctx, trp);
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) { ctx.stop(); });

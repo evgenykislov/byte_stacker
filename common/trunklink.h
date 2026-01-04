@@ -12,7 +12,8 @@
 связи */
 class TrunkClient {
  public:
-  TrunkClient(boost::asio::io_context& ctx);
+  TrunkClient(boost::asio::io_context& ctx,
+      const std::vector<boost::asio::ip::udp::endpoint>& trpoints);
   virtual ~TrunkClient();
 
   /*! Создать новый "виртуальный" коннект
@@ -50,6 +51,8 @@ class TrunkClient {
     std::function<void(ConnectID)> OnDisconnect;
     std::function<void(ConnectID, void*, size_t)> OnData;
   };
+
+  std::vector<boost::asio::ip::udp::endpoint> points_;
 
   std::vector<ConnectInfo> connects_;
   std::mutex connect_lock_;

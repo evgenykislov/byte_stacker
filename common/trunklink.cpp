@@ -2,8 +2,42 @@
 
 #include <iostream>
 
+enum Command : uint32_t {
+  kCommandCreateConnect = 1,
+  kCommandReleaseConnect = 2,
+  kCommandAckCreateConnect = 3,
+  kCommandDataOut = 11,
+  kCommandDataIn = 12,
+  kCommandAckDataOut = 21,
+  kCommandAckDataIn = 22
+};
 
-TrunkClient::TrunkClient(boost::asio::io_context& ctx) {
+const size_t kConnectIDSize = 16;
+
+struct PacketHeader {
+  Command PacketCommand;
+  uint8_t ConnectID[kConnectIDSize];
+};
+
+struct PacketConnect: PacketHeader {
+  uint32_t PointID;
+};
+
+
+struct PacketData: PacketHeader {
+  uint32_t PacketIndex;
+  uint32_t DataSize;
+  // uint8_t Data[DataSize];
+};
+
+
+struct PacketAck: PacketHeader {
+  uint32_t PacketIndex;
+};
+
+TrunkClient::TrunkClient(boost::asio::io_context& ctx,
+    const std::vector<boost::asio::ip::udp::endpoint>& trpoints)
+    : points_(trpoints) {
   // Инициализация генератора uuid
   std::random_device rd;
   auto seed_data = std::array<int, std::mt19937::state_size>{};
@@ -21,6 +55,7 @@ ConnectID TrunkClient::CreateConnect(PointID point,
 
   uuids::uuid_random_generator gen{generator_};
   uuids::uuid id = gen();
+  assert(id.as_bytes().size() == kConnectIDSize);
   ci.ID = id;
   ci.OnDisconnect = on_disconnect;
   ci.OnData = on_data;
@@ -28,6 +63,7 @@ ConnectID TrunkClient::CreateConnect(PointID point,
   std::unique_lock<std::mutex> lk(connect_lock_);
   connects_.push_back(ci);
   lk.unlock();
+
 
   return id;
 }
