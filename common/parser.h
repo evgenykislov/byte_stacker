@@ -8,6 +8,10 @@
 
 // TODO descr
 bool ParsePoint(std::string arg_wo_prefix, unsigned int& id,
+    std::string& address, uint16_t& port);
+
+// TODO descr
+bool ParsePoint(std::string arg_wo_prefix, unsigned int& id,
     boost::asio::ip::tcp::endpoint& point);
 
 // TODO Descr

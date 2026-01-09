@@ -6,6 +6,7 @@
 #include <iostream>
 #include <map>
 
+#include "outlink.h"
 #include "parser.h"
 #include "trunklink.h"
 
@@ -30,22 +31,23 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::map<PointID, bai::tcp::endpoint> eps;  //!< Внешние точки коннекта
+  std::map<PointID, AddressPortPoint> eps;  //!< Внешние точки коннекта
   std::vector<bai::udp::endpoint> trp;  //!< Транковые точки для обмена данными
 
   for (int i = 1; i < argc; ++i) {
     std::string a(argv[i]);
 
     if (a.starts_with(kExternalPrefix)) {
-      bai::tcp::endpoint ep;
       PointID id;
-      if (ParsePoint(a.substr(kExternalPrefix.size()), id, ep)) {
+      AddressPortPoint ep;
+      if (ParsePoint(
+              a.substr(kExternalPrefix.size()), id, ep.Address, ep.Port)) {
         eps[id] = ep;
       } else {
         return 2;
       }
     } else if (a.starts_with(kTrunkPrefix)) {
-      if (!ParseTrunkPoint(a, trp)) {
+      if (!ParseTrunkPoint(a.substr(kTrunkPrefix.size()), trp)) {
         return 2;
       }
     }

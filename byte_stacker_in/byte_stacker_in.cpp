@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
         return 2;
       }
     } else if (a.starts_with(kTrunkPrefix)) {
-      if (!ParseTrunkPoint(a, trp)) {
+      if (!ParseTrunkPoint(a.substr(kTrunkPrefix.size()), trp)) {
         return 2;
       }
     }

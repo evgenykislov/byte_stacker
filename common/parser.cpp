@@ -2,7 +2,7 @@
 
 
 bool ParsePoint(std::string arg_wo_prefix, unsigned int& id,
-    boost::asio::ip::tcp::endpoint& point) {
+    std::string& address, uint16_t& port) {
   auto p = arg_wo_prefix.find('=');
   if (p == std::string::npos || p == 0) {
     return false;
@@ -24,17 +24,34 @@ bool ParsePoint(std::string arg_wo_prefix, unsigned int& id,
     return false;
   }
 
-  auto sip = adr.substr(0, p1);
+  address = adr.substr(0, p1);
   auto sport = adr.substr(p1 + 1);
   try {
     std::size_t s;
-    unsigned short iport = (unsigned short)std::stoul(sport, &s);
+    port = (unsigned short)std::stoul(sport, &s);
     if (s != sport.size()) {
       throw std::runtime_error("bad format of port");
     }
 
-    point.address(boost::asio::ip::make_address_v4(sip));
-    point.port(iport);
+    return true;
+  } catch (std::exception&) {
+    return false;
+  }
+  return false;
+}
+
+
+bool ParsePoint(std::string arg_wo_prefix, unsigned int& id,
+    boost::asio::ip::tcp::endpoint& point) {
+  std::string adr;
+  uint16_t port;
+  if (!ParsePoint(arg_wo_prefix, id, adr, port)) {
+    return false;
+  }
+
+  try {
+    point.address(boost::asio::ip::make_address_v4(adr));
+    point.port(port);
     return true;
   } catch (std::exception&) {
     return false;
