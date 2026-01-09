@@ -162,3 +162,7 @@ bool TrunkClient::SendData(ConnectID cnt, void* data, size_t data_size) {
 
   return false;
 }
+
+TrunkServer::TrunkServer(boost::asio::io_context& ctx): asio_context_(ctx) {}
+
+TrunkServer::~TrunkServer() {}

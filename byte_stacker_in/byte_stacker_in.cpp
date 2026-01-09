@@ -10,6 +10,7 @@
 #include <boost/asio.hpp>
 
 #include "inlink.h"
+#include "parser.h"
 #include "trunklink.h"
 
 namespace bai = boost::asio::ip;
@@ -70,107 +71,6 @@ boost::asio::awaitable<void> ListenLocalPoint(
 }
 
 
-bool ParseLocalPoint(
-    std::string arg, PointID& id, boost::asio::ip::tcp::endpoint& point) {
-  assert(arg.starts_with(kLocalPrefix));
-  auto b = arg.substr(kLocalPrefix.size());
-  auto p = b.find('=');
-  if (p == std::string::npos || p == 0) {
-    std::cerr << "Unknown argument '" << arg << "'" << std::endl;
-    return false;
-  }
-  auto sid = b.substr(0, p);
-  try {
-    std::size_t s;
-    id = static_cast<PointID>(std::stoul(sid, &s));
-    if (s != (std::size_t)p) {
-      throw std::runtime_error("bad format of id");
-    }
-  } catch (std::exception&) {
-    std::cerr << "Bad format of argument '" << arg << "'" << std::endl;
-    return false;
-  }
-
-  auto adr = b.substr(p + 1);
-  auto p1 = adr.find(':');
-  if (p1 == std::string::npos || p1 == 0) {
-    std::cerr << "Bad format of address in argument '" << arg << "'"
-              << std::endl;
-    return false;
-  }
-
-  auto sip = adr.substr(0, p1);
-  auto sport = adr.substr(p1 + 1);
-  try {
-    std::size_t s;
-    unsigned short iport = (unsigned short)std::stoul(sport, &s);
-    if (s != sport.size()) {
-      throw std::runtime_error("bad format of port");
-    }
-
-    point.address(bai::make_address_v4(sip));
-    point.port(iport);
-    return true;
-  } catch (std::exception&) {
-    std::cerr << "Bad format of argument '" << arg << "'" << std::endl;
-    return false;
-  }
-  return false;
-}
-
-bool ParseTrunkPoint(
-    std::string arg, std::vector<boost::asio::ip::udp::endpoint>& points) {
-  assert(arg.starts_with(kTrunkPrefix));
-  points.clear();
-  auto adr = arg.substr(kTrunkPrefix.size());
-  auto p1 = adr.find(':');
-  if (p1 == std::string::npos || p1 == 0) {
-    std::cerr << "Bad format of address in argument '" << arg << "'"
-              << std::endl;
-    return false;
-  }
-
-  auto sip = adr.substr(0, p1);
-  auto sports = adr.substr(p1 + 1);
-  try {
-    auto ip = bai::make_address_v4(sip);
-    while (!sports.empty()) {
-      std::string chunk;
-      auto p2 = sports.find(',');
-      if (p2 == std::string::npos) {
-        chunk = sports;
-        sports.clear();
-      } else {
-        chunk = sports.substr(0, p2);
-        sports = sports.substr(p2 + 1);
-      }
-
-      if (chunk.empty()) {
-        std::cerr << "Bad format of port in argument '" << arg << "'"
-                  << std::endl;
-        return false;
-      }
-
-      std::size_t s;
-      unsigned short iport = (unsigned short)std::stoul(chunk, &s);
-      if (s != chunk.size()) {
-        throw std::runtime_error("bad format of port");
-      }
-
-      boost::asio::ip::udp::endpoint pt;
-      pt.address(ip);
-      pt.port(iport);
-      points.push_back(pt);
-    }
-    return true;
-  } catch (std::exception&) {
-    std::cerr << "Bad format of argument '" << arg << "'" << std::endl;
-    return false;
-  }
-  return false;
-}
-
-
 int main(int argc, char** argv) {
   if (argc <= 1) {
     PrintHelp();
@@ -187,7 +87,7 @@ int main(int argc, char** argv) {
     if (a.starts_with(kLocalPrefix)) {
       bai::tcp::endpoint ep;
       PointID id;
-      if (ParseLocalPoint(a, id, ep)) {
+      if (ParsePoint(a.substr(kLocalPrefix.size()), id, ep)) {
         lps[id] = ep;
       } else {
         return 2;

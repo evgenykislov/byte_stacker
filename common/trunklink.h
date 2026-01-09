@@ -120,6 +120,19 @@ class TrunkClient {
 
 /*! \class TrunkServer Серверная часть транковой (многоканальной)
 связи */
-class TrunkServer {};
+class TrunkServer {
+ public:
+  TrunkServer(boost::asio::io_context& ctx);
+  virtual ~TrunkServer();
+
+ private:
+  TrunkServer() = delete;
+  TrunkServer(const TrunkServer&) = delete;
+  TrunkServer(TrunkServer&&) = delete;
+  TrunkServer& operator=(const TrunkServer&) = delete;
+  TrunkServer& operator=(TrunkServer&&) = delete;
+
+  boost::asio::io_context& asio_context_;
+};
 
 #endif  // TRUNKLINK_H

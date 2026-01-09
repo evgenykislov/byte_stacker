@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(SOURCE_FILES
   "byte_stacker_in.cpp"
   "inlink.cpp"
+  "../common/parser.cpp"
   "../common/trunklink.cpp"
 )
 
@@ -17,6 +18,7 @@ set(HEADER_FILES
   "byte_stacker_in.h"
   "inlink.h"
   "../common/data.h"
+  "../common/parser.h"
   "../common/trunklink.h"
 )
 
