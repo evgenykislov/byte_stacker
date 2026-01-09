@@ -71,7 +71,8 @@ int main(int argc, char** argv) {
   // TODO
   try {
     boost::asio::io_context ctx(4 /* TODO */);
-    TrunkServer trs(ctx /*, trp */);
+    TrunkServer trs(ctx, trp,
+        [](PointID point) -> IOutLink* { return CreateOutLink(point); });
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) { ctx.stop(); });

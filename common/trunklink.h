@@ -23,6 +23,32 @@ enum TrunkCommand : uint32_t {
 enum TrunkConnectStatus { kTrunkConnectCreated, kTrunkConnectConfirmed };
 
 
+const size_t kConnectIDSize = 16;
+const unsigned int kTimeout = 300;
+
+struct PacketHeader {
+  uint8_t ConnectID[kConnectIDSize];
+  TrunkCommand PacketCommand;
+};
+
+struct PacketConnect: PacketHeader {
+  uint32_t PointID;
+  uint32_t Timeout;
+};
+
+
+struct PacketData: PacketHeader {
+  uint32_t PacketIndex;
+  uint32_t DataSize;
+  // uint8_t Data[DataSize];
+};
+
+
+struct PacketAck: PacketHeader {
+  uint32_t PacketIndex;
+};
+
+
 /*! \class TrunkClient Клиентская часть транковой (многоканальной)
 связи */
 class TrunkClient {
@@ -122,7 +148,9 @@ class TrunkClient {
 связи */
 class TrunkServer {
  public:
-  TrunkServer(boost::asio::io_context& ctx);
+  TrunkServer(boost::asio::io_context& ctx,
+      const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
+      std::function<IOutLink*(PointID)> link_fabric);
   virtual ~TrunkServer();
 
  private:
@@ -132,7 +160,26 @@ class TrunkServer {
   TrunkServer& operator=(const TrunkServer&) = delete;
   TrunkServer& operator=(TrunkServer&&) = delete;
 
+  static const size_t kPacketBufferSize = 1000;
+  using PacketBuffer = uint8_t[kPacketBufferSize];
+
+
   boost::asio::io_context& asio_context_;
+  std::function<IOutLink*(PointID)> link_fabric_;
+
+  // TODO Descr?
+  std::shared_ptr<PacketBuffer> GetBuffer();
+
+  // TODO Descr
+  void ReceiveTrunkData(std::shared_ptr<boost::asio::ip::udp::socket> socket,
+      std::shared_ptr<PacketBuffer> buffer,
+      std::shared_ptr<boost::asio::ip::udp::endpoint> client);
+
+  // TODO Descr
+  void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
+      size_t data_size);
+
+  void ProcessConnectData(const PacketConnect* info);
 };
 
 #endif  // TRUNKLINK_H

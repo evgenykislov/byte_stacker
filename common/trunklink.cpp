@@ -2,31 +2,8 @@
 
 #include <iostream>
 
+namespace bai = boost::asio::ip;
 
-const size_t kConnectIDSize = 16;
-const unsigned int kTimeout = 300;
-
-struct PacketHeader {
-  uint8_t ConnectID[kConnectIDSize];
-  TrunkCommand PacketCommand;
-};
-
-struct PacketConnect: PacketHeader {
-  uint32_t PointID;
-  uint32_t Timeout;
-};
-
-
-struct PacketData: PacketHeader {
-  uint32_t PacketIndex;
-  uint32_t DataSize;
-  // uint8_t Data[DataSize];
-};
-
-
-struct PacketAck: PacketHeader {
-  uint32_t PacketIndex;
-};
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints)
@@ -163,6 +140,66 @@ bool TrunkClient::SendData(ConnectID cnt, void* data, size_t data_size) {
   return false;
 }
 
-TrunkServer::TrunkServer(boost::asio::io_context& ctx): asio_context_(ctx) {}
+TrunkServer::TrunkServer(boost::asio::io_context& ctx,
+    const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
+    std::function<IOutLink*(PointID)> link_fabric)
+    : asio_context_(ctx), link_fabric_(link_fabric) {
+  for (auto& p : trpoints) {
+    auto socket = std::make_shared<bai::udp::socket>(ctx, p);
+    auto buffer = GetBuffer();
+    auto client = std::make_shared<bai::udp::endpoint>();
+    ReceiveTrunkData(socket, buffer, client);
+  }
+}
 
 TrunkServer::~TrunkServer() {}
+
+
+std::shared_ptr<TrunkServer::PacketBuffer> TrunkServer::GetBuffer() {
+  return std::make_shared<TrunkServer::PacketBuffer>();
+}
+
+void TrunkServer::ReceiveTrunkData(
+    std::shared_ptr<boost::asio::ip::udp::socket> socket,
+    std::shared_ptr<PacketBuffer> buffer,
+    std::shared_ptr<boost::asio::ip::udp::endpoint> client) {
+  socket->async_receive_from(
+      boost::asio::buffer(buffer.get(), kPacketBufferSize), *client,
+      [this, socket, buffer, client](
+          boost::system::error_code err, std::size_t data_size) {
+        // TODO Processing ???
+        ProcessTrunkData(*client, buffer.get(), data_size);
+
+        ReceiveTrunkData(socket, buffer, client);
+      });
+}
+
+void TrunkServer::ProcessTrunkData(
+    boost::asio::ip::udp::endpoint client, const void* data, size_t data_size) {
+  if (data_size < sizeof(PacketHeader)) {
+    // Битый пакет непонятно откуда и от кого
+    return;
+  }
+
+  auto hdr = static_cast<const PacketHeader*>(data);
+  switch (hdr->PacketCommand) {
+    case kTrunkCommandCreateConnect:
+      if (data_size < sizeof(PacketConnect)) {
+        // Неполный формат
+        return;
+      }
+      ProcessConnectData(static_cast<const PacketConnect*>(hdr));
+      break;
+  }
+}
+
+void TrunkServer::ProcessConnectData(const PacketConnect* info) {
+  auto ol = link_fabric_(info->PointID);
+  if (!ol) {
+    // TODO ERROR Can't create link
+    return;
+  }
+
+  // TODO Processing
+  return;
+}
