@@ -182,18 +182,26 @@ void TrunkServer::ProcessTrunkData(
   }
 
   auto hdr = static_cast<const PacketHeader*>(data);
+  uuids::uuid cnt(hdr->ConnectID, hdr->ConnectID + sizeof(hdr->ConnectID));
   switch (hdr->PacketCommand) {
     case kTrunkCommandCreateConnect:
       if (data_size < sizeof(PacketConnect)) {
         // Неполный формат
         return;
       }
-      ProcessConnectData(static_cast<const PacketConnect*>(hdr));
+      ProcessConnectData(cnt, static_cast<const PacketConnect*>(hdr));
       break;
   }
 }
 
-void TrunkServer::ProcessConnectData(const PacketConnect* info) {
+void TrunkServer::ProcessConnectData(
+    uuids::uuid cnt, const PacketConnect* info) {
+  // TRACE
+  std::printf("-- Request connect to point %u. Id: %s\n", info->PointID,
+      uuids::to_string(cnt).c_str());
+  std::cout.flush();
+
+
   auto ol = link_fabric_(info->PointID);
   if (!ol) {
     // TODO ERROR Can't create link

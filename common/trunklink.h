@@ -179,7 +179,7 @@ class TrunkServer {
   void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
       size_t data_size);
 
-  void ProcessConnectData(const PacketConnect* info);
+  void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info);
 };
 
 #endif  // TRUNKLINK_H
