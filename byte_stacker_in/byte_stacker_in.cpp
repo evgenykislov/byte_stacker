@@ -28,13 +28,18 @@ void PrintHelp() {
 }
 
 
-void RegisterPoint(TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
+/*! Регистрируем новое соединение с подключенным сокетом
+\param trc клиент транковой связи
+\param id идентификатор точки подключения (может быть несколько подключений для
+одной и той-же точки)
+\param socket подключенный tcp сокет новоко соединения */
+void RegisterConnect(TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
   ConnectID cnt;
   assert(cnt.is_nil());
 
   try {
     auto ol = std::make_shared<OutLink>(std::move(socket));
-    cnt = trc.AddConnect(id, ol);
+    trc.AddConnect(id, ol);
   } catch (std::exception&) {
     // Незарегистрировали. Просто выходим
   }
@@ -42,7 +47,7 @@ void RegisterPoint(TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
 
 
 /*! Функция слушает одну локальную точку, устанавливает соединения через неё.
-Функция использует архитектуру boost:asio для асинхронной работы
+Функция асинхронная через сопрограммы boost:asio
 \param tpc клиент транковой связи (фактически глобальный экземпляр)
 \param id идентификатор точки
 \param point точка для установки соединений
@@ -54,7 +59,7 @@ boost::asio::awaitable<void> ListenLocalPoint(
   for (;;) {
     bai::tcp::socket socket =
         co_await acceptor.async_accept(boost::asio::use_awaitable);
-    RegisterPoint(trc, id, std::move(socket));
+    RegisterConnect(trc, id, std::move(socket));
   }
 }
 

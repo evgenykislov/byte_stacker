@@ -57,13 +57,10 @@ class TrunkClient {
   virtual ~TrunkClient();
 
   // TODO Change
-  /*! Создать новый "виртуальный" коннект
+  /*! Добавить новое подключение к транковой связи
   \param point идентификатор внешней точки подключения
-  \param on_disconnect обработчик события разрыва коннекта
-  \param on_data обработчик события прихода данных
-  \return идентификатор коннекта. В случае ошибки возвращается пустой
-  идентификатор (.is_nil() == true) */
-  ConnectID AddConnect(PointID point, std::shared_ptr<OutLink> link);
+  \param link экземпляр соединения */
+  void AddConnect(PointID point, std::shared_ptr<OutLink> link);
 
   /*! Разорвать коннект. При этом будет вызван обработчик дисконнекта.
   Допустимо разрывать уже разорванный коннект.

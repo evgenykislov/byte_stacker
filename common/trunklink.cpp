@@ -18,8 +18,7 @@ TrunkClient::TrunkClient(boost::asio::io_context& ctx,
 
 TrunkClient::~TrunkClient() {}
 
-ConnectID TrunkClient::AddConnect(
-    PointID point, std::shared_ptr<OutLink> link) {
+void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
   ConnectInfo ci;
 
   uuids::uuid_random_generator gen{generator_};
@@ -34,8 +33,7 @@ ConnectID TrunkClient::AddConnect(
   lk.unlock();
 
   SendConnect(id, point, kTimeout);
-
-  return id;
+  ci.Link->Run(this, ci.ID);
 }
 
 void TrunkClient::ReleaseConnect(ConnectID cnt) noexcept {
