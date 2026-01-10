@@ -21,9 +21,6 @@ enum TrunkCommand : uint32_t {
 };
 
 
-enum TrunkConnectStatus { kTrunkConnectCreated, kTrunkConnectConfirmed };
-
-
 const size_t kConnectIDSize = 16;
 const unsigned int kTimeout = 300;
 
@@ -101,7 +98,6 @@ class TrunkClient {
   struct ConnectInfo {
     ConnectID ID;
     std::shared_ptr<OutLink> Link;
-    TrunkConnectStatus Status;
     uint32_t NextIndex;  //!< Индекс пакета для следующего пакета
   };
 

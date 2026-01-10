@@ -28,7 +28,6 @@ ConnectID TrunkClient::AddConnect(
   ci.ID = id;
   ci.Link = link;
   ci.NextIndex = 0;
-  // ci.Status = // TODO Remove status ???
 
   std::unique_lock<std::mutex> lk(connects_lock_);
   connects_.push_back(ci);
@@ -57,8 +56,6 @@ void TrunkClient::ReleaseConnect(ConnectID cnt) noexcept {
     // Нет такого коннекта
     return;
   }
-
-  ci.Link.reset();  // TODO Only reset??
 }
 
 void TrunkClient::SendConnect(
@@ -163,7 +160,10 @@ void TrunkServer::ReceiveTrunkData(
       boost::asio::buffer(buffer.get(), kPacketBufferSize), *client,
       [this, socket, buffer, client](
           boost::system::error_code err, std::size_t data_size) {
-        // TODO Processing ???
+        if (err) {
+          // TODO Error processing
+          return;
+        }
         ProcessTrunkData(*client, buffer.get(), data_size);
 
         ReceiveTrunkData(socket, buffer, client);

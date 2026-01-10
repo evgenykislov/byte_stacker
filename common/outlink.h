@@ -54,9 +54,4 @@ class OutLink {
 };
 
 
-std::shared_ptr<OutLink> CreateOutLink(PointID point);
-
-std::shared_ptr<OutLink> CreateOutLink(
-    PointID point, boost::asio::ip::tcp::socket&& socket);
-
 #endif  // OUTLINK_H
