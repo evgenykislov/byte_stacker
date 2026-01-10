@@ -22,7 +22,8 @@ enum TrunkCommand : uint32_t {
 
 
 const size_t kConnectIDSize = 16;
-const unsigned int kTimeout = 300;
+const unsigned int kResendTimeout = 300;
+const unsigned int kDeadlineTimeout = 5000;
 
 struct PacketHeader {
   uint8_t ConnectID[kConnectIDSize];
@@ -89,6 +90,7 @@ class TrunkClient {
   TrunkClient& operator=(TrunkClient&&) = delete;
 
   static const size_t kPacketBufferSize = 1000;
+  static const size_t kResendTick = 100;
   using PacketBuffer = uint8_t[kPacketBufferSize];
   static const uint32_t kBadPacketIndex = static_cast<uint32_t>(-1);
 
@@ -102,6 +104,10 @@ class TrunkClient {
     ConnectID CtxID;
     std::shared_ptr<PacketBuffer> PacketData;
     uint32_t PacketSize;
+    std::chrono::steady_clock::time_point
+        Deadline;  //!< Время, после которого считается соединение разорванным
+    std::chrono::steady_clock::time_point
+        NextSend;  //!< Время посылки дублириющей посылки
   };
 
 
@@ -122,6 +128,7 @@ class TrunkClient {
   std::vector<PacketConnectCache> packet_connect_cache_;
   std::vector<PacketDataCache> packet_data_cache_;
   std::mutex packet_cache_lock_;
+  boost::asio::steady_timer cache_timer_;
 
 
   std::mt19937 generator_;
@@ -134,6 +141,14 @@ class TrunkClient {
 
   // TODO Descr + kBadPacketIndex
   uint32_t GetPacketIndex(ConnectID cnt);
+
+  // TODO Descr
+  void CacheResend();
+
+  // Asio Requesters
+
+  /*! Запросить переотправку кэша */
+  void RequestCacheResend();
 };
 
 
