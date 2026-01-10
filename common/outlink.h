@@ -31,7 +31,10 @@ class OutLink {
   OutLink& operator=(OutLink&& arg) = default;
   virtual ~OutLink();
 
-  // TODO descr
+  /*! Запуск подключения в работу. Функция неблокирующая
+  \param hoster указатель на "хостера", который работает со всеми подключениями.
+  Указатель должен быть корректным, пока идёт работе подлключения
+  \param cnr идентификатор этого подключения для идентификации данных */
   void Run(TrunkClient* hoster, ConnectID cnt);
 
  private:
@@ -41,10 +44,12 @@ class OutLink {
 
   static const size_t kChunkSize = 800;
 
-  boost::asio::ip::tcp::socket socket_;
-  char read_buffer_[kChunkSize];
+  boost::asio::ip::tcp::socket socket_;  //! Сокет подключения
+  char read_buffer_[kChunkSize];  //! Буфер для приёма данных. Однопоточный
 
-  // TODO Descr + однопоточный
+  /*! Функция запрос чтения данных. Функция асинхронная, данные запрашиваются и
+  функция сразу завершает работу. Для каждого экземпляра подключения функция
+  должна вызываться "однопоточно" */
   void RequestRead();
 };
 

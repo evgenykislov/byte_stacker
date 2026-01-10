@@ -19,15 +19,12 @@ namespace this_coro = boost::asio::this_coro;
 
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
-const size_t kChunkSize = 800;  // TODO Remove?
-
 
 void PrintHelp() {
   std::cout << "byte_stacker_in" << std::endl;
   std::cout << "byte_stacker_in --local1=ip:port [--local2=ip:port ...] "
                "--trunk=ip:port1,port2..."
             << std::endl;
-  // TODO Добавить описание
 }
 
 
@@ -91,23 +88,17 @@ int main(int argc, char** argv) {
   }
 
   if (lps.empty()) {
-    std::wcerr << "Внимание: Не задано ни одной точки входа" << std::endl;
+    std::wcerr << "WARNING: There are no local point" << std::endl;
     return 3;
   }
 
   if (trp.empty()) {
-    std::wcerr << "Внимание: Не задано ни одной точки передачи" << std::endl;
+    std::wcerr << "WARNING: There are no trunk point" << std::endl;
     return 3;
   }
 
-
-  // Проверка транковых соединений
-  // TODO
-
-  // Получаем соединения
-  // TODO
   try {
-    boost::asio::io_context ctx(4 /* TODO */);
+    boost::asio::io_context ctx;
     TrunkClient trc(ctx, trp);
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
