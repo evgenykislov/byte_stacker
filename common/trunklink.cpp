@@ -1,5 +1,6 @@
 #include "trunklink.h"
 
+#include <chrono>
 #include <iostream>
 
 namespace bai = boost::asio::ip;
@@ -7,40 +8,37 @@ namespace bai = boost::asio::ip;
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints)
-    : points_(trpoints), trunk_socket_(ctx, boost::asio::ip::udp::v4()) {
+    : points_(trpoints),
+      trunk_socket_(ctx, boost::asio::ip::udp::v4()),
+      cache_timer_(ctx) {
   // Инициализация генератора uuid
   std::random_device rd;
   auto seed_data = std::array<int, std::mt19937::state_size>{};
   std::generate(std::begin(seed_data), std::end(seed_data), std::ref(rd));
   std::seed_seq seq(std::begin(seed_data), std::end(seed_data));
   generator_ = std::mt19937(seq);
+
+  RequestCacheResend();
 }
 
 TrunkClient::~TrunkClient() {}
 
-ConnectID TrunkClient::CreateConnect(PointID point,
-    std::function<void(ConnectID)> on_disconnect,
-    std::function<void(ConnectID, void*, size_t)> on_data) {
+void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
   ConnectInfo ci;
 
   uuids::uuid_random_generator gen{generator_};
   uuids::uuid id = gen();
   assert(id.as_bytes().size() == kConnectIDSize);
   ci.ID = id;
-  ci.OnDisconnect = on_disconnect;
-  ci.OnData = on_data;
+  ci.Link = link;
   ci.NextIndex = 0;
-  // ci.Status = // TODO Remove status ???
 
   std::unique_lock<std::mutex> lk(connects_lock_);
   connects_.push_back(ci);
   lk.unlock();
 
-  SendConnect(id, point, kTimeout);
-
-  //  trunk_socket_.async_send_to()
-
-  return id;
+  SendConnect(id, point, kResendTimeout);
+  ci.Link->Run(this, ci.ID);
 }
 
 void TrunkClient::ReleaseConnect(ConnectID cnt) noexcept {
@@ -61,8 +59,6 @@ void TrunkClient::ReleaseConnect(ConnectID cnt) noexcept {
     // Нет такого коннекта
     return;
   }
-
-  ci.OnDisconnect(ci.ID);
 }
 
 void TrunkClient::SendConnect(
@@ -72,6 +68,10 @@ void TrunkClient::SendConnect(
   pc.PacketData = buf;
   pc.PacketSize = sizeof(PacketConnect);
   pc.CtxID = cnt;
+
+  auto curt = std::chrono::steady_clock::now();
+  pc.Deadline = curt + std::chrono::milliseconds(kDeadlineTimeout);
+  pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
 
   assert(sizeof(PacketConnect) <= kPacketBufferSize);
   auto pkt = (PacketConnect*)(pc.PacketData.get());
@@ -105,6 +105,36 @@ uint32_t TrunkClient::GetPacketIndex(ConnectID cnt) {
     }
   }
   return kBadPacketIndex;
+}
+
+void TrunkClient::CacheResend() {
+  auto curt = std::chrono::steady_clock::now();
+  std::lock_guard<std::mutex> lk(packet_cache_lock_);
+  for (auto& item : packet_connect_cache_) {
+    // TODO process deadline ????
+
+    if (item.NextSend > curt) {
+      continue;
+    }
+    item.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+    auto pd = item.PacketData;
+    trunk_socket_.async_send_to(
+        boost::asio::buffer(item.PacketData.get(), item.PacketSize),
+        points_.front(),
+        [pd](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+  }
+}
+
+void TrunkClient::RequestCacheResend() {
+  std::chrono::milliseconds intrv{kResendTick};
+  cache_timer_.expires_after(intrv);
+  cache_timer_.async_wait([this](const boost::system::error_code& err) {
+    // TODO Error checking
+
+    CacheResend();
+
+    RequestCacheResend();
+  });
 }
 
 bool TrunkClient::SendData(ConnectID cnt, void* data, size_t data_size) {
@@ -142,7 +172,7 @@ bool TrunkClient::SendData(ConnectID cnt, void* data, size_t data_size) {
 
 TrunkServer::TrunkServer(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
-    std::function<IOutLink*(PointID)> link_fabric)
+    std::function<std::shared_ptr<OutLink>(PointID)> link_fabric)
     : asio_context_(ctx), link_fabric_(link_fabric) {
   for (auto& p : trpoints) {
     auto socket = std::make_shared<bai::udp::socket>(ctx, p);
@@ -167,7 +197,10 @@ void TrunkServer::ReceiveTrunkData(
       boost::asio::buffer(buffer.get(), kPacketBufferSize), *client,
       [this, socket, buffer, client](
           boost::system::error_code err, std::size_t data_size) {
-        // TODO Processing ???
+        if (err) {
+          // TODO Error processing
+          return;
+        }
         ProcessTrunkData(*client, buffer.get(), data_size);
 
         ReceiveTrunkData(socket, buffer, client);

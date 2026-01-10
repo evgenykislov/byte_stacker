@@ -21,7 +21,6 @@ void PrintHelp() {
   std::cout << "byte_stacker_out --external1=ip:port [--external2=ip:port ...] "
                "--trunk=ip:port1,port2..."
             << std::endl;
-  // TODO Добавить описание
 }
 
 
@@ -64,15 +63,10 @@ int main(int argc, char** argv) {
   }
 
 
-  // Проверка транковых соединений
-  // TODO
-
-  // Получаем соединения
-  // TODO
   try {
-    boost::asio::io_context ctx(4 /* TODO */);
+    boost::asio::io_context ctx;
     TrunkServer trs(ctx, trp,
-        [](PointID point) -> IOutLink* { return CreateOutLink(point); });
+        [](PointID point) -> std::shared_ptr<OutLink> { return nullptr; });
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) { ctx.stop(); });

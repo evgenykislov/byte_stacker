@@ -10,6 +10,7 @@
 #include <boost/asio.hpp>
 
 #include "inlink.h"
+#include "outlink.h"
 #include "parser.h"
 #include "trunklink.h"
 
@@ -18,42 +19,35 @@ namespace this_coro = boost::asio::this_coro;
 
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
-const size_t kChunkSize = 800;
-
 
 void PrintHelp() {
   std::cout << "byte_stacker_in" << std::endl;
   std::cout << "byte_stacker_in --local1=ip:port [--local2=ip:port ...] "
                "--trunk=ip:port1,port2..."
             << std::endl;
-  // TODO Добавить описание
 }
 
 
-boost::asio::awaitable<void> ProcessPoint(
-    TrunkClient& trc, PointID id, bai::tcp::socket socket) {
+/*! Регистрируем новое соединение с подключенным сокетом
+\param trc клиент транковой связи
+\param id идентификатор точки подключения (может быть несколько подключений для
+одной и той-же точки)
+\param socket подключенный tcp сокет новоко соединения */
+void RegisterConnect(TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
   ConnectID cnt;
   assert(cnt.is_nil());
 
   try {
-    cnt = trc.CreateConnect(
-        id, [&socket](ConnectID cnt) { socket.close(); },
-        [](ConnectID cnt, void* data, size_t data_size) {});
-    for (;;) {
-      char data[kChunkSize];
-      std::size_t n = co_await socket.async_read_some(
-          boost::asio::buffer(data), boost::asio::use_awaitable);
-    }
+    auto ol = std::make_shared<OutLink>(std::move(socket));
+    trc.AddConnect(id, ol);
   } catch (std::exception&) {
-    // Чтение прервано. Просто выходим
+    // Незарегистрировали. Просто выходим
   }
-
-  trc.ReleaseConnect(cnt);
 }
 
 
 /*! Функция слушает одну локальную точку, устанавливает соединения через неё.
-Функция использует архитектуру boost:asio для асинхронной работы
+Функция асинхронная через сопрограммы boost:asio
 \param tpc клиент транковой связи (фактически глобальный экземпляр)
 \param id идентификатор точки
 \param point точка для установки соединений
@@ -65,8 +59,7 @@ boost::asio::awaitable<void> ListenLocalPoint(
   for (;;) {
     bai::tcp::socket socket =
         co_await acceptor.async_accept(boost::asio::use_awaitable);
-    co_spawn(executor, ProcessPoint(trc, id, std::move(socket)),
-        boost::asio::detached);
+    RegisterConnect(trc, id, std::move(socket));
   }
 }
 
@@ -100,23 +93,17 @@ int main(int argc, char** argv) {
   }
 
   if (lps.empty()) {
-    std::wcerr << "Внимание: Не задано ни одной точки входа" << std::endl;
+    std::wcerr << "WARNING: There are no local point" << std::endl;
     return 3;
   }
 
   if (trp.empty()) {
-    std::wcerr << "Внимание: Не задано ни одной точки передачи" << std::endl;
+    std::wcerr << "WARNING: There are no trunk point" << std::endl;
     return 3;
   }
 
-
-  // Проверка транковых соединений
-  // TODO
-
-  // Получаем соединения
-  // TODO
   try {
-    boost::asio::io_context ctx(4 /* TODO */);
+    boost::asio::io_context ctx;
     TrunkClient trc(ctx, trp);
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);

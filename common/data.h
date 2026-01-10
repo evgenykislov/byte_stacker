@@ -8,10 +8,4 @@ using PointID = unsigned int;
 using ConnectID = uuids::uuid;
 
 
-class IOutLink {
- public:
-  virtual ~IOutLink() = 0;
-};
-
-
 #endif  // DATA_H

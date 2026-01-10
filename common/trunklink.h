@@ -7,6 +7,7 @@
 #include <boost/asio.hpp>
 
 #include "data.h"
+#include "outlink.h"
 
 
 enum TrunkCommand : uint32_t {
@@ -20,11 +21,9 @@ enum TrunkCommand : uint32_t {
 };
 
 
-enum TrunkConnectStatus { kTrunkConnectCreated, kTrunkConnectConfirmed };
-
-
 const size_t kConnectIDSize = 16;
-const unsigned int kTimeout = 300;
+const unsigned int kResendTimeout = 300;
+const unsigned int kDeadlineTimeout = 5000;
 
 struct PacketHeader {
   uint8_t ConnectID[kConnectIDSize];
@@ -48,6 +47,7 @@ struct PacketAck: PacketHeader {
   uint32_t PacketIndex;
 };
 
+class OutLink;
 
 /*! \class TrunkClient Клиентская часть транковой (многоканальной)
 связи */
@@ -57,15 +57,11 @@ class TrunkClient {
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints);
   virtual ~TrunkClient();
 
-  /*! Создать новый "виртуальный" коннект
+  // TODO Change
+  /*! Добавить новое подключение к транковой связи
   \param point идентификатор внешней точки подключения
-  \param on_disconnect обработчик события разрыва коннекта
-  \param on_data обработчик события прихода данных
-  \return идентификатор коннекта. В случае ошибки возвращается пустой
-  идентификатор (.is_nil() == true) */
-  ConnectID CreateConnect(PointID point,
-      std::function<void(ConnectID)> on_disconnect,
-      std::function<void(ConnectID, void*, size_t)> on_data);
+  \param link экземпляр соединения */
+  void AddConnect(PointID point, std::shared_ptr<OutLink> link);
 
   /*! Разорвать коннект. При этом будет вызван обработчик дисконнекта.
   Допустимо разрывать уже разорванный коннект.
@@ -94,14 +90,13 @@ class TrunkClient {
   TrunkClient& operator=(TrunkClient&&) = delete;
 
   static const size_t kPacketBufferSize = 1000;
+  static const size_t kResendTick = 100;
   using PacketBuffer = uint8_t[kPacketBufferSize];
   static const uint32_t kBadPacketIndex = static_cast<uint32_t>(-1);
 
   struct ConnectInfo {
     ConnectID ID;
-    std::function<void(ConnectID)> OnDisconnect;
-    std::function<void(ConnectID, void*, size_t)> OnData;
-    TrunkConnectStatus Status;
+    std::shared_ptr<OutLink> Link;
     uint32_t NextIndex;  //!< Индекс пакета для следующего пакета
   };
 
@@ -109,6 +104,10 @@ class TrunkClient {
     ConnectID CtxID;
     std::shared_ptr<PacketBuffer> PacketData;
     uint32_t PacketSize;
+    std::chrono::steady_clock::time_point
+        Deadline;  //!< Время, после которого считается соединение разорванным
+    std::chrono::steady_clock::time_point
+        NextSend;  //!< Время посылки дублириющей посылки
   };
 
 
@@ -129,6 +128,7 @@ class TrunkClient {
   std::vector<PacketConnectCache> packet_connect_cache_;
   std::vector<PacketDataCache> packet_data_cache_;
   std::mutex packet_cache_lock_;
+  boost::asio::steady_timer cache_timer_;
 
 
   std::mt19937 generator_;
@@ -141,6 +141,14 @@ class TrunkClient {
 
   // TODO Descr + kBadPacketIndex
   uint32_t GetPacketIndex(ConnectID cnt);
+
+  // TODO Descr
+  void CacheResend();
+
+  // Asio Requesters
+
+  /*! Запросить переотправку кэша */
+  void RequestCacheResend();
 };
 
 
@@ -150,7 +158,7 @@ class TrunkServer {
  public:
   TrunkServer(boost::asio::io_context& ctx,
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
-      std::function<IOutLink*(PointID)> link_fabric);
+      std::function<std::shared_ptr<OutLink>(PointID)> link_fabric);
   virtual ~TrunkServer();
 
  private:
@@ -165,7 +173,7 @@ class TrunkServer {
 
 
   boost::asio::io_context& asio_context_;
-  std::function<IOutLink*(PointID)> link_fabric_;
+  std::function<std::shared_ptr<OutLink>(PointID)> link_fabric_;
 
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();
