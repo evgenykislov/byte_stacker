@@ -7,6 +7,7 @@
 #include <boost/asio.hpp>
 
 #include "data.h"
+#include "outlink.h"
 
 
 enum TrunkCommand : uint32_t {
@@ -48,6 +49,7 @@ struct PacketAck: PacketHeader {
   uint32_t PacketIndex;
 };
 
+class OutLink;
 
 /*! \class TrunkClient Клиентская часть транковой (многоканальной)
 связи */
@@ -57,15 +59,14 @@ class TrunkClient {
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints);
   virtual ~TrunkClient();
 
+  // TODO Change
   /*! Создать новый "виртуальный" коннект
   \param point идентификатор внешней точки подключения
   \param on_disconnect обработчик события разрыва коннекта
   \param on_data обработчик события прихода данных
   \return идентификатор коннекта. В случае ошибки возвращается пустой
   идентификатор (.is_nil() == true) */
-  ConnectID CreateConnect(PointID point,
-      std::function<void(ConnectID)> on_disconnect,
-      std::function<void(ConnectID, void*, size_t)> on_data);
+  ConnectID AddConnect(PointID point, std::shared_ptr<OutLink> link);
 
   /*! Разорвать коннект. При этом будет вызван обработчик дисконнекта.
   Допустимо разрывать уже разорванный коннект.
@@ -99,8 +100,7 @@ class TrunkClient {
 
   struct ConnectInfo {
     ConnectID ID;
-    std::function<void(ConnectID)> OnDisconnect;
-    std::function<void(ConnectID, void*, size_t)> OnData;
+    std::shared_ptr<OutLink> Link;
     TrunkConnectStatus Status;
     uint32_t NextIndex;  //!< Индекс пакета для следующего пакета
   };
@@ -150,7 +150,7 @@ class TrunkServer {
  public:
   TrunkServer(boost::asio::io_context& ctx,
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
-      std::function<IOutLink*(PointID)> link_fabric);
+      std::function<std::shared_ptr<OutLink>(PointID)> link_fabric);
   virtual ~TrunkServer();
 
  private:
@@ -165,7 +165,7 @@ class TrunkServer {
 
 
   boost::asio::io_context& asio_context_;
-  std::function<IOutLink*(PointID)> link_fabric_;
+  std::function<std::shared_ptr<OutLink>(PointID)> link_fabric_;
 
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();

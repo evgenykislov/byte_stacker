@@ -10,6 +10,7 @@
 #include <boost/asio.hpp>
 
 #include "inlink.h"
+#include "outlink.h"
 #include "parser.h"
 #include "trunklink.h"
 
@@ -18,7 +19,7 @@ namespace this_coro = boost::asio::this_coro;
 
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
-const size_t kChunkSize = 800;
+const size_t kChunkSize = 800;  // TODO Remove?
 
 
 void PrintHelp() {
@@ -30,25 +31,16 @@ void PrintHelp() {
 }
 
 
-boost::asio::awaitable<void> ProcessPoint(
-    TrunkClient& trc, PointID id, bai::tcp::socket socket) {
+void RegisterPoint(TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
   ConnectID cnt;
   assert(cnt.is_nil());
 
   try {
-    cnt = trc.CreateConnect(
-        id, [&socket](ConnectID cnt) { socket.close(); },
-        [](ConnectID cnt, void* data, size_t data_size) {});
-    for (;;) {
-      char data[kChunkSize];
-      std::size_t n = co_await socket.async_read_some(
-          boost::asio::buffer(data), boost::asio::use_awaitable);
-    }
+    auto ol = std::make_shared<OutLink>(std::move(socket));
+    cnt = trc.AddConnect(id, ol);
   } catch (std::exception&) {
-    // Чтение прервано. Просто выходим
+    // Незарегистрировали. Просто выходим
   }
-
-  trc.ReleaseConnect(cnt);
 }
 
 
@@ -65,8 +57,7 @@ boost::asio::awaitable<void> ListenLocalPoint(
   for (;;) {
     bai::tcp::socket socket =
         co_await acceptor.async_accept(boost::asio::use_awaitable);
-    co_spawn(executor, ProcessPoint(trc, id, std::move(socket)),
-        boost::asio::detached);
+    RegisterPoint(trc, id, std::move(socket));
   }
 }
 

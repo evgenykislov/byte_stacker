@@ -18,17 +18,15 @@ TrunkClient::TrunkClient(boost::asio::io_context& ctx,
 
 TrunkClient::~TrunkClient() {}
 
-ConnectID TrunkClient::CreateConnect(PointID point,
-    std::function<void(ConnectID)> on_disconnect,
-    std::function<void(ConnectID, void*, size_t)> on_data) {
+ConnectID TrunkClient::AddConnect(
+    PointID point, std::shared_ptr<OutLink> link) {
   ConnectInfo ci;
 
   uuids::uuid_random_generator gen{generator_};
   uuids::uuid id = gen();
   assert(id.as_bytes().size() == kConnectIDSize);
   ci.ID = id;
-  ci.OnDisconnect = on_disconnect;
-  ci.OnData = on_data;
+  ci.Link = link;
   ci.NextIndex = 0;
   // ci.Status = // TODO Remove status ???
 
@@ -37,8 +35,6 @@ ConnectID TrunkClient::CreateConnect(PointID point,
   lk.unlock();
 
   SendConnect(id, point, kTimeout);
-
-  //  trunk_socket_.async_send_to()
 
   return id;
 }
@@ -62,7 +58,7 @@ void TrunkClient::ReleaseConnect(ConnectID cnt) noexcept {
     return;
   }
 
-  ci.OnDisconnect(ci.ID);
+  ci.Link.reset();  // TODO Only reset??
 }
 
 void TrunkClient::SendConnect(
@@ -142,7 +138,7 @@ bool TrunkClient::SendData(ConnectID cnt, void* data, size_t data_size) {
 
 TrunkServer::TrunkServer(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
-    std::function<IOutLink*(PointID)> link_fabric)
+    std::function<std::shared_ptr<OutLink>(PointID)> link_fabric)
     : asio_context_(ctx), link_fabric_(link_fabric) {
   for (auto& p : trpoints) {
     auto socket = std::make_shared<bai::udp::socket>(ctx, p);
