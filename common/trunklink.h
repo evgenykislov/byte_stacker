@@ -84,11 +84,21 @@ class TrunkLink {
   virtual void ProcessAckConnectData(
       uuids::uuid cnt, const PacketHeader* info){};
 
+  void AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link);
+
  private:
   TrunkLink(const TrunkLink&) = delete;
   TrunkLink(TrunkLink&&) = delete;
   TrunkLink& operator=(const TrunkLink&) = delete;
   TrunkLink& operator=(TrunkLink&&) = delete;
+
+  struct OutLinkInfo {
+    uuids::uuid connect_id;
+    std::shared_ptr<OutLink> link;
+  };
+
+  std::vector<OutLinkInfo> out_links_;
+  std::mutex out_links_lock_;
 };
 
 

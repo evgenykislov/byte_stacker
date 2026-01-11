@@ -38,6 +38,18 @@ void TrunkLink::ProcessTrunkData(
   }
 }
 
+void TrunkLink::AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link) {
+  OutLinkInfo info;
+  info.connect_id = cnt;
+  info.link = link;
+
+  std::unique_lock lk(out_links_lock_);
+  out_links_.push_back(info);
+  lk.unlock();
+
+  link->Run(this, cnt);
+}
+
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints)
@@ -306,8 +318,7 @@ void TrunkServer::ProcessConnectData(
     return;
   }
 
-  // TODO Processing
-  return;
+  AddOutLink(cnt, ol);
 }
 
 

@@ -65,8 +65,20 @@ int main(int argc, char** argv) {
 
   try {
     boost::asio::io_context ctx;
-    TrunkServer trs(ctx, trp,
-        [](PointID point) -> std::shared_ptr<OutLink> { return nullptr; });
+    TrunkServer trs(
+        ctx, trp, [&eps, &ctx](PointID point) -> std::shared_ptr<OutLink> {
+          auto it = eps.find(point);
+          if (it == eps.end()) {
+            return nullptr;
+          }
+
+          try {
+            return std::make_shared<OutLink>(
+                ctx, it->second.Address, it->second.Port);
+          } catch (...) {
+          }
+          return nullptr;
+        });
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) { ctx.stop(); });
