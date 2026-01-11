@@ -5,6 +5,36 @@
 
 namespace bai = boost::asio::ip;
 
+// TODO Descr
+void CopyConnectID(uint8_t dest[16], const uuids::uuid& src) {
+  auto cnt_bin = src.as_bytes();
+  assert(cnt_bin.size_bytes() == 16);
+  memcpy(dest, cnt_bin.data(), 16);
+}
+
+
+TrunkLink::TrunkLink() {}
+
+void TrunkLink::ProcessTrunkData(
+    boost::asio::ip::udp::endpoint client, const void* data, size_t data_size) {
+  if (data_size < sizeof(PacketHeader)) {
+    // Битый пакет непонятно откуда и от кого
+    return;
+  }
+
+  auto hdr = static_cast<const PacketHeader*>(data);
+  uuids::uuid cnt(hdr->ConnectID, hdr->ConnectID + sizeof(hdr->ConnectID));
+  switch (hdr->PacketCommand) {
+    case kTrunkCommandCreateConnect:
+      if (data_size < sizeof(PacketConnect)) {
+        // Неполный формат
+        return;
+      }
+      ProcessConnectData(cnt, static_cast<const PacketConnect*>(hdr));
+      break;
+  }
+}
+
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints)
@@ -175,10 +205,11 @@ TrunkServer::TrunkServer(boost::asio::io_context& ctx,
     std::function<std::shared_ptr<OutLink>(PointID)> link_fabric)
     : asio_context_(ctx), link_fabric_(link_fabric) {
   for (auto& p : trpoints) {
-    auto socket = std::make_shared<bai::udp::socket>(ctx, p);
-    auto buffer = GetBuffer();
-    auto client = std::make_shared<bai::udp::endpoint>();
-    ReceiveTrunkData(socket, buffer, client);
+    trunk_sockets_.emplace_back(ServerSocket{{ctx, p}, GetBuffer()});
+  }
+
+  for (size_t index = 0; index < trunk_sockets_.size(); ++index) {
+    ReceiveTrunkData(index);
   }
 }
 
@@ -189,43 +220,29 @@ std::shared_ptr<TrunkServer::PacketBuffer> TrunkServer::GetBuffer() {
   return std::make_shared<TrunkServer::PacketBuffer>();
 }
 
-void TrunkServer::ReceiveTrunkData(
-    std::shared_ptr<boost::asio::ip::udp::socket> socket,
-    std::shared_ptr<PacketBuffer> buffer,
-    std::shared_ptr<boost::asio::ip::udp::endpoint> client) {
-  socket->async_receive_from(
-      boost::asio::buffer(buffer.get(), kPacketBufferSize), *client,
-      [this, socket, buffer, client](
-          boost::system::error_code err, std::size_t data_size) {
+void TrunkServer::ReceiveTrunkData(size_t index) {
+  auto& ts = trunk_sockets_[index];
+  ts.socket.async_receive_from(
+      boost::asio::buffer(ts.buffer.get(), kPacketBufferSize), ts.client_holder,
+      [this, index](boost::system::error_code err, std::size_t data_size) {
         if (err) {
           // TODO Error processing
-          return;
+        } else {
+          auto& ts = trunk_sockets_[index];
+          uuids::uuid cnt;
+          if (!GetPacketConnectID(ts.buffer.get(), data_size, cnt)) {
+            // Битый пакет
+            // TODO что делать
+          } else {
+            AddClientLink({cnt, index, ts.client_holder});
+            ProcessTrunkData(ts.client_holder, ts.buffer.get(), data_size);
+          }
         }
-        ProcessTrunkData(*client, buffer.get(), data_size);
 
-        ReceiveTrunkData(socket, buffer, client);
+        ReceiveTrunkData(index);
       });
 }
 
-void TrunkServer::ProcessTrunkData(
-    boost::asio::ip::udp::endpoint client, const void* data, size_t data_size) {
-  if (data_size < sizeof(PacketHeader)) {
-    // Битый пакет непонятно откуда и от кого
-    return;
-  }
-
-  auto hdr = static_cast<const PacketHeader*>(data);
-  uuids::uuid cnt(hdr->ConnectID, hdr->ConnectID + sizeof(hdr->ConnectID));
-  switch (hdr->PacketCommand) {
-    case kTrunkCommandCreateConnect:
-      if (data_size < sizeof(PacketConnect)) {
-        // Неполный формат
-        return;
-      }
-      ProcessConnectData(cnt, static_cast<const PacketConnect*>(hdr));
-      break;
-  }
-}
 
 void TrunkServer::ProcessConnectData(
     uuids::uuid cnt, const PacketConnect* info) {
@@ -234,7 +251,20 @@ void TrunkServer::ProcessConnectData(
       uuids::to_string(cnt).c_str());
   std::cout.flush();
 
+  // Отправим подтверждение на получение пакета
+  assert(sizeof(PacketHeader) <= kPacketBufferSize);
+  auto buf = GetBuffer();
+  auto pkt = (PacketHeader*)(buf.get());
+  CopyConnectID(pkt->ConnectID, cnt);
+  pkt->PacketCommand = kTrunkCommandAckCreateConnect;
+  PacketInfo pi;
+  pi.CtxID = cnt;
+  pi.PacketID = kEmptyPacketID;
+  pi.PacketData = buf;
+  pi.PacketSize = sizeof(PacketHeader);
+  SendPacket(pi);
 
+  // Создадим внешний коннект
   auto ol = link_fabric_(info->PointID);
   if (!ol) {
     // TODO ERROR Can't create link
@@ -243,4 +273,57 @@ void TrunkServer::ProcessConnectData(
 
   // TODO Processing
   return;
+}
+
+
+void TrunkServer::SendPacket(PacketInfo pkt) {
+  // Найдём, куда отправлять
+  ConnectInfo info;
+  info.connect = pkt.CtxID;
+
+  if (!GetClientLink(info)) {
+    // Нет информации о коннекте
+    // Неизвестно, куда отправлять данные
+    return;
+  }
+
+  auto& ts = trunk_sockets_[info.socket_index];
+  auto buf = pkt.PacketData;
+  ts.socket.async_send_to(boost::asio::buffer(buf.get(), pkt.PacketSize),
+      info.client,
+      [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+}
+
+bool TrunkServer::GetPacketConnectID(
+    const void* data, size_t data_size, uuids::uuid& cnt) {
+  if (data_size < sizeof(PacketHeader)) {
+    // Битый пакет непонятно откуда и от кого
+    return false;
+  }
+
+  auto hdr = static_cast<const PacketHeader*>(data);
+  cnt = uuids::uuid(hdr->ConnectID, hdr->ConnectID + sizeof(hdr->ConnectID));
+  return true;
+}
+
+void TrunkServer::AddClientLink(ConnectInfo info) {
+  std::lock_guard lk(clients_link_lock_);
+  for (auto& item : clients_link_) {
+    if (item.connect == info.connect) {
+      item = info;
+      return;
+    }
+  }
+  clients_link_.push_back(info);
+}
+
+bool TrunkServer::GetClientLink(ConnectInfo& info) {
+  std::lock_guard lk(clients_link_lock_);
+  for (auto& item : clients_link_) {
+    if (item.connect == info.connect) {
+      info = item;
+      return true;
+    }
+  }
+  return false;
 }

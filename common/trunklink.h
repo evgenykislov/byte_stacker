@@ -49,9 +49,51 @@ struct PacketAck: PacketHeader {
 
 class OutLink;
 
+
+/*! \class TrunkLink Общая часть алгоритмов транковой связи. TrunkLink не
+предназначен для самостоятельного использвоания, только как базовый класс */
+class TrunkLink {
+ public:
+  TrunkLink();
+
+  virtual ~TrunkLink() {}
+
+  static const uint32_t kEmptyPacketID = static_cast<uint32_t>(-1);
+
+  static const size_t kPacketBufferSize = 1000;
+  using PacketBuffer = uint8_t[kPacketBufferSize];
+
+  struct PacketInfo {
+    ConnectID CtxID;
+    uint32_t PacketID;  // Номер пакета или kEmptyPacketID
+    std::shared_ptr<PacketBuffer> PacketData;
+    uint32_t PacketSize;
+  };
+
+
+  void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
+      size_t data_size);
+
+  PacketInfo FormPacket(
+      const PacketData& header, uint8_t* data, size_t data_size);
+
+  virtual void SendPacket(PacketInfo pkt) = 0;
+
+  // Обработчики отдельных команд
+  virtual void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info){};
+
+
+ private:
+  TrunkLink(const TrunkLink&) = delete;
+  TrunkLink(TrunkLink&&) = delete;
+  TrunkLink& operator=(const TrunkLink&) = delete;
+  TrunkLink& operator=(TrunkLink&&) = delete;
+};
+
+
 /*! \class TrunkClient Клиентская часть транковой (многоканальной)
 связи */
-class TrunkClient {
+class TrunkClient: public TrunkLink {
  public:
   TrunkClient(boost::asio::io_context& ctx,
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints);
@@ -89,9 +131,7 @@ class TrunkClient {
   TrunkClient& operator=(const TrunkClient&) = delete;
   TrunkClient& operator=(TrunkClient&&) = delete;
 
-  static const size_t kPacketBufferSize = 1000;
   static const size_t kResendTick = 100;
-  using PacketBuffer = uint8_t[kPacketBufferSize];
   static const uint32_t kBadPacketIndex = static_cast<uint32_t>(-1);
 
   struct ConnectInfo {
@@ -111,7 +151,7 @@ class TrunkClient {
   };
 
 
-  struct PacketDataCache {
+  struct PacketDataCache {  // TODO remove due to parent class
     ConnectID CtxID;
     uint32_t PacketID;
     std::shared_ptr<PacketBuffer> PacketData;
@@ -120,10 +160,12 @@ class TrunkClient {
 
 
   std::vector<boost::asio::ip::udp::endpoint> points_;
-  boost::asio::ip::udp::socket trunk_socket_;
+
 
   std::vector<ConnectInfo> connects_;
   std::mutex connects_lock_;
+
+  boost::asio::ip::udp::socket trunk_socket_;
 
   std::vector<PacketConnectCache> packet_connect_cache_;
   std::vector<PacketDataCache> packet_data_cache_;
@@ -149,12 +191,16 @@ class TrunkClient {
 
   /*! Запросить переотправку кэша */
   void RequestCacheResend();
+
+  void SendPacket(PacketInfo pkt) override {
+    // TODO Implement
+  }
 };
 
 
 /*! \class TrunkServer Серверная часть транковой (многоканальной)
 связи */
-class TrunkServer {
+class TrunkServer: public TrunkLink {
  public:
   TrunkServer(boost::asio::io_context& ctx,
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
@@ -173,21 +219,46 @@ class TrunkServer {
 
 
   boost::asio::io_context& asio_context_;
+
+  /*! Сокеты для транковой связи. Массив инициализируется в конструкторе и в
+  дальнейшем не меняется. Сокеты можно адресовать по индексу в массиве */
+  struct ServerSocket {
+    boost::asio::ip::udp::socket socket;
+    std::shared_ptr<TrunkServer::PacketBuffer> buffer;
+    boost::asio::ip::udp::endpoint client_holder;
+  };
+  std::vector<ServerSocket> trunk_sockets_;
+
+  /*! Информация для связи с клиеннтами по транковой связи: какой сокет
+  использовать и конечную точку */
+  struct ConnectInfo {
+    uuids::uuid connect;
+    size_t socket_index;
+    boost::asio::ip::udp::endpoint client;
+  };
+  std::vector<ConnectInfo> clients_link_;
+  std::mutex clients_link_lock_;
+
   std::function<std::shared_ptr<OutLink>(PointID)> link_fabric_;
 
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();
 
   // TODO Descr
-  void ReceiveTrunkData(std::shared_ptr<boost::asio::ip::udp::socket> socket,
-      std::shared_ptr<PacketBuffer> buffer,
-      std::shared_ptr<boost::asio::ip::udp::endpoint> client);
+  void ReceiveTrunkData(size_t index);
 
   // TODO Descr
-  void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
-      size_t data_size);
 
-  void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info);
+  void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info) override;
+
+
+  void SendPacket(PacketInfo pkt) override;
+
+  // TODO Descr
+  bool GetPacketConnectID(const void* data, size_t data_size, uuids::uuid& cnt);
+
+  void AddClientLink(ConnectInfo info);
+  bool GetClientLink(ConnectInfo& info);
 };
 
 #endif  // TRUNKLINK_H
