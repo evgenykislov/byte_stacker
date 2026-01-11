@@ -2,8 +2,12 @@
 
 #include <iostream>
 
+#include "trunklink.h"
+
 OutLink::OutLink(boost::asio::ip::tcp::socket&& socket)
-    : socket_(std::move(socket)), resolver_(socket_.get_executor()) {}
+    : socket_(std::move(socket)),
+      resolver_(socket_.get_executor()),
+      hoster_(nullptr) {}
 
 
 OutLink::OutLink(
@@ -11,7 +15,8 @@ OutLink::OutLink(
     : socket_(ctx),
       resolver_(ctx),
       host_(address),
-      service_(std::to_string(port)) {}
+      service_(std::to_string(port)),
+      hoster_(nullptr) {}
 
 
 void OutLink::RequestRead() {
@@ -19,7 +24,13 @@ void OutLink::RequestRead() {
       [this](
           const boost::system::error_code& err, std::size_t bytes_transferred) {
         //
+        if (err) {
+          // TODO ошибка чтения
+          return;
+        }
 
+        assert(hoster_);
+        hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
 
         RequestRead();
       });
@@ -55,6 +66,10 @@ void OutLink::RequestConnect() {
 OutLink::~OutLink() { socket_.close(); }
 
 void OutLink::Run(TrunkLink* hoster, ConnectID cnt) {
+  assert(hoster);
+  hoster_ = hoster;
+  selfid_ = cnt;
+
   if (socket_.is_open()) {
     RequestRead();
   } else {
@@ -78,4 +93,9 @@ void OutLink::Run(TrunkLink* hoster, ConnectID cnt) {
           }
         });
   }
+}
+
+void OutLink::SendData(const void* data, size_t data_size) {
+  // TODO implement
+  int k = 0;
 }

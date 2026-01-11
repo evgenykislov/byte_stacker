@@ -48,6 +48,9 @@ class OutLink {
   \param cnr идентификатор этого подключения для идентификации данных */
   void Run(TrunkLink* hoster, ConnectID cnt);
 
+  // TODO Descr
+  void SendData(const void* data, size_t data_size);
+
  private:
   OutLink() = delete;
   OutLink(const OutLink&) = delete;
@@ -61,6 +64,8 @@ class OutLink {
   std::string host_;
   std::string service_;
   std::list<boost::asio::ip::tcp::endpoint> resolved_points_;
+  TrunkLink* hoster_;
+  ConnectID selfid_;
 
 
   /*! Функция запрос чтения данных. Функция асинхронная, данные запрашиваются и

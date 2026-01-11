@@ -14,7 +14,8 @@ enum TrunkCommand : uint32_t {
   kTrunkCommandCreateConnect = 1,
   kTrunkCommandReleaseConnect = 2,
   kTrunkCommandAckCreateConnect = 3,
-  kTrunkCommandDataOut = 11,
+  kTrunkCommandDataOut =
+      11,  // Пакет данных с локальной точки на внешний сервер
   kTrunkCommandDataIn = 12,
   kTrunkCommandAckDataOut = 21,
   kTrunkCommandAckDataIn = 22
@@ -24,6 +25,8 @@ enum TrunkCommand : uint32_t {
 const size_t kConnectIDSize = 16;
 const unsigned int kResendTimeout = 300;
 const unsigned int kDeadlineTimeout = 5000;
+
+const size_t kMaxChunkSize = 800;
 
 struct PacketHeader {
   uint8_t ConnectID[kConnectIDSize];
@@ -54,11 +57,17 @@ class OutLink;
 предназначен для самостоятельного использвоания, только как базовый класс */
 class TrunkLink {
  public:
-  TrunkLink();
+  TrunkLink(boost::asio::io_context& ctx, bool server_side);
 
   virtual ~TrunkLink() {}
 
+  // TODO Descr
+  void SendData(ConnectID cnt, const void* data, size_t data_size);
+
+
+ protected:
   static const uint32_t kEmptyPacketID = static_cast<uint32_t>(-1);
+  static const uint32_t kBadPacketIndex = static_cast<uint32_t>(-2);
 
   static const size_t kPacketBufferSize = 1000;
   using PacketBuffer = uint8_t[kPacketBufferSize];
@@ -84,9 +93,21 @@ class TrunkLink {
   virtual void ProcessAckConnectData(
       uuids::uuid cnt, const PacketHeader* info){};
 
+  void ProcessDataOut(
+      uuids::uuid cnt, const PacketData* info, const void* data);
+
   void AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link);
 
+  std::shared_ptr<OutLink> GetOutLink(uuids::uuid cnt);
+
+  // TODO Descr?
+  std::shared_ptr<PacketBuffer> GetBuffer();
+
+  // TODO Descr
+  virtual void OnCacheResend();
+
  private:
+  TrunkLink() = delete;
   TrunkLink(const TrunkLink&) = delete;
   TrunkLink(TrunkLink&&) = delete;
   TrunkLink& operator=(const TrunkLink&) = delete;
@@ -95,10 +116,46 @@ class TrunkLink {
   struct OutLinkInfo {
     uuids::uuid connect_id;
     std::shared_ptr<OutLink> link;
+    uint32_t next_index_to_trunk;  //!< Индекс пакета для следующего пакета
   };
+
+
+  struct PacketDataCache {  // TODO remove due to parent class
+    PacketInfo info;
+    std::chrono::steady_clock::time_point
+        Deadline;  //!< Время, после которого считается соединение разорванным
+    std::chrono::steady_clock::time_point
+        NextSend;  //!< Время посылки дублириющей посылки
+  };
+
+
+  static const size_t kResendTick = 100;
+
+  struct ConnectInfo {
+    ConnectID ID;
+    uint32_t NextIndex;  //!< Индекс следующего пакета для отсылки в транк
+  };
+
+
+  std::vector<ConnectInfo> connects_;
+  std::mutex connects_lock_;
+
+
+  bool server_side_;
 
   std::vector<OutLinkInfo> out_links_;
   std::mutex out_links_lock_;
+
+  std::vector<PacketDataCache> packet_data_cache_;
+  std::mutex packet_data_cache_lock_;
+  boost::asio::steady_timer cache_timer_;
+
+
+  // TODO Descr + kBadPacketIndex
+  uint32_t GetNextPacketIndex(ConnectID cnt);
+
+  /*! Запросить переотправку кэша */
+  void RequestCacheResend();
 };
 
 
@@ -110,30 +167,11 @@ class TrunkClient: public TrunkLink {
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints);
   virtual ~TrunkClient();
 
-  // TODO Change
-  /*! Добавить новое подключение к транковой связи
+  /*! Добавить новое подключение.  Подключение будет добавлено, функция его\
+  зарегистрирует и запустит (вызовет Run).
   \param point идентификатор внешней точки подключения
-  \param link экземпляр соединения */
+  \param link экземпляр соединения. Объект не может быть пустым */
   void AddConnect(PointID point, std::shared_ptr<OutLink> link);
-
-  /*! Разорвать коннект. При этом будет вызван обработчик дисконнекта.
-  Допустимо разрывать уже разорванный коннект.
-  \param cnt идентификатор коннекта */
-  void ReleaseConnect(ConnectID cnt) noexcept;
-
-  /*! Отправить оповещение о новом коннекте
-  \param cnt идентификатор коннекта
-  \param point идентификатор внешней точки кодключения
-  \param timeout таймаут для обмена данными, мс */
-  void SendConnect(ConnectID cnt, PointID point, unsigned int timeout);
-
-  /*! Отправить данные по коннекту
-  \param cnt идентификатор коннекта
-  \param data буфер с данными
-  \param data_size размер данных на отправку
-  \return признак, что данные приняты к отправке. Если коннекта нет, или он
-  закрыт, то возвращается false */
-  bool SendData(ConnectID cnt, void* data, size_t data_size);
 
  private:
   TrunkClient() = delete;
@@ -142,75 +180,43 @@ class TrunkClient: public TrunkLink {
   TrunkClient& operator=(const TrunkClient&) = delete;
   TrunkClient& operator=(TrunkClient&&) = delete;
 
-  static const size_t kResendTick = 100;
-  static const uint32_t kBadPacketIndex = static_cast<uint32_t>(-1);
-
-  struct ConnectInfo {
-    ConnectID ID;
-    std::shared_ptr<OutLink> Link;
-    uint32_t NextIndex;  //!< Индекс пакета для следующего пакета
-  };
-
+  // Данные для подтверждения подключения
   struct PacketConnectCache {
-    ConnectID CtxID;
-    std::shared_ptr<PacketBuffer> PacketData;
-    uint32_t PacketSize;
+    PacketInfo info;
     std::chrono::steady_clock::time_point
         Deadline;  //!< Время, после которого считается соединение разорванным
     std::chrono::steady_clock::time_point
         NextSend;  //!< Время посылки дублириющей посылки
   };
 
-
-  struct PacketDataCache {  // TODO remove due to parent class
-    ConnectID CtxID;
-    uint32_t PacketID;
-    std::shared_ptr<PacketBuffer> PacketData;
-    uint32_t PacketSize;
-  };
-
+  std::vector<PacketConnectCache> connect_cache_;
+  std::mutex connect_cache_lock_;
 
   std::vector<boost::asio::ip::udp::endpoint> points_;
-
-
-  std::vector<ConnectInfo> connects_;
-  std::mutex connects_lock_;
 
   boost::asio::ip::udp::socket trunk_socket_;
   PacketBuffer trunk_read_buffer_;
   boost::asio::ip::udp::endpoint trunk_read_point_;
 
-  std::vector<PacketConnectCache> packet_connect_cache_;
-  std::vector<PacketDataCache> packet_data_cache_;
-  std::mutex packet_cache_lock_;
-  boost::asio::steady_timer cache_timer_;
-
-
   std::mt19937 generator_;
 
-  // TODO Descr?
-  void SendConnect(TrunkCommand cmd, ConnectID cnt);
-
-  // TODO Descr?
-  std::shared_ptr<PacketBuffer> GetBuffer();
-
-  // TODO Descr + kBadPacketIndex
-  uint32_t GetPacketIndex(ConnectID cnt);
+  /*! Отправить оповещение о новом коннекте на сторону сервера
+  \param cnt идентификатор коннекта
+  \param point идентификатор внешней точки кодключения
+  \param timeout таймаут для обмена данными, мс */
+  void SendConnectInformation(
+      ConnectID cnt, PointID point, unsigned int timeout);
 
   // TODO Descr
-  void CacheResend();
+  void OnCacheResend() override;
 
   void ReceiveTrunkData();
 
 
   // Asio Requesters
 
-  /*! Запросить переотправку кэша */
-  void RequestCacheResend();
 
-  void SendPacket(PacketInfo pkt) override {
-    // TODO Implement
-  }
+  void SendPacket(PacketInfo pkt) override;
 
   void ProcessAckConnectData(
       uuids::uuid cnt, const PacketHeader* info) override;

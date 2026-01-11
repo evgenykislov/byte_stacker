@@ -13,7 +13,80 @@ void CopyConnectID(uint8_t dest[16], const uuids::uuid& src) {
 }
 
 
-TrunkLink::TrunkLink() {}
+TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side)
+    : server_side_(server_side),
+      cache_timer_(ctx)
+
+{
+  RequestCacheResend();
+}
+
+uint32_t TrunkLink::GetNextPacketIndex(ConnectID cnt) {
+  std::lock_guard<std::mutex> lk(connects_lock_);
+  for (auto& item : connects_) {
+    if (item.ID == cnt) {
+      auto res = item.NextIndex;
+      ++item.NextIndex;
+      return res;
+    }
+  }
+  return kBadPacketIndex;
+}
+
+void TrunkLink::RequestCacheResend() {
+  std::chrono::milliseconds intrv{kResendTick};
+  cache_timer_.expires_after(intrv);
+  cache_timer_.async_wait([this](const boost::system::error_code& err) {
+    // TODO Error checking
+
+    OnCacheResend();
+
+    RequestCacheResend();
+  });
+}
+
+
+void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
+  if (data_size > kMaxChunkSize) {
+    assert(false);
+    return;
+  }
+
+  auto pkt_index = GetNextPacketIndex(cnt);
+  if (pkt_index == kBadPacketIndex) {
+    // TODO ERROR
+    return;
+  }
+
+  // Сформируем сам пакет
+  auto buf = GetBuffer();
+  auto pkt = (PacketData*)(buf.get());
+  CopyConnectID(pkt->ConnectID, cnt);
+  pkt->PacketCommand =
+      server_side_ ? kTrunkCommandDataIn : kTrunkCommandDataOut;
+  pkt->PacketIndex = pkt_index;
+  pkt->DataSize = data_size;
+  memcpy(buf.get() + sizeof(PacketData), data, data_size);
+
+  // Сформируем информационный блок для кэширования и т.д.
+  PacketInfo info;
+  info.CtxID = cnt;
+  info.PacketID = pkt_index;
+  info.PacketData = buf;
+  info.PacketSize = sizeof(PacketData) + data_size;
+
+  PacketDataCache pc;
+  pc.info = info;
+  auto curt = std::chrono::steady_clock::now();
+  pc.Deadline = curt + std::chrono::milliseconds(kDeadlineTimeout);
+  pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+
+  std::unique_lock<std::mutex> lk(packet_data_cache_lock_);
+  packet_data_cache_.push_back(pc);
+  lk.unlock();
+
+  SendPacket(info);
+}
 
 void TrunkLink::ProcessTrunkData(
     boost::asio::ip::udp::endpoint client, const void* data, size_t data_size) {
@@ -35,13 +108,39 @@ void TrunkLink::ProcessTrunkData(
     case kTrunkCommandAckCreateConnect:
       ProcessAckConnectData(cnt, hdr);
       break;
+    case kTrunkCommandDataOut:
+      if (data_size < sizeof(PacketData)) {
+        // Неполный формат
+        return;
+      }
+
+      auto pd = static_cast<const PacketData*>(hdr);
+      if (data_size != (sizeof(PacketData) + pd->DataSize)) {
+        // Ошибка формата
+        return;
+      }
+      ProcessDataOut(cnt, pd, pd + 1);
+      break;
   }
+}
+
+void TrunkLink::ProcessDataOut(
+    uuids::uuid cnt, const PacketData* info, const void* data) {
+  auto link = GetOutLink(cnt);
+  if (!link) {
+    // Нет такого подключения
+    // TODO Error process
+    return;
+  }
+
+  link->SendData(data, info->DataSize);
 }
 
 void TrunkLink::AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link) {
   OutLinkInfo info;
   info.connect_id = cnt;
   info.link = link;
+  info.next_index_to_trunk = 0;
 
   std::unique_lock lk(out_links_lock_);
   out_links_.push_back(info);
@@ -50,12 +149,28 @@ void TrunkLink::AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link) {
   link->Run(this, cnt);
 }
 
+std::shared_ptr<OutLink> TrunkLink::GetOutLink(uuids::uuid cnt) {
+  std::unique_lock lk(out_links_lock_);
+  for (auto& item : out_links_) {
+    if (item.connect_id == cnt) {
+      return item.link;
+    }
+  }
+  return std::shared_ptr<OutLink>();
+}
+
+std::shared_ptr<TrunkLink::PacketBuffer> TrunkLink::GetBuffer() {
+  return std::make_shared<TrunkClient::PacketBuffer>();
+}
+
+void TrunkLink::OnCacheResend() {}
+
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints)
-    : points_(trpoints),
-      trunk_socket_(ctx, boost::asio::ip::udp::v4()),
-      cache_timer_(ctx) {
+    : TrunkLink(ctx, false),
+      points_(trpoints),
+      trunk_socket_(ctx, boost::asio::ip::udp::v4()) {
   // Инициализация генератора uuid
   std::random_device rd;
   auto seed_data = std::array<int, std::mt19937::state_size>{};
@@ -64,113 +179,73 @@ TrunkClient::TrunkClient(boost::asio::io_context& ctx,
   generator_ = std::mt19937(seq);
 
   ReceiveTrunkData();
-
-  RequestCacheResend();
 }
 
-TrunkClient::~TrunkClient() {}
-
-void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
-  ConnectInfo ci;
-
-  uuids::uuid_random_generator gen{generator_};
-  uuids::uuid id = gen();
-  assert(id.as_bytes().size() == kConnectIDSize);
-  ci.ID = id;
-  ci.Link = link;
-  ci.NextIndex = 0;
-
-  std::unique_lock<std::mutex> lk(connects_lock_);
-  connects_.push_back(ci);
-  lk.unlock();
-
-  SendConnect(id, point, kResendTimeout);
-  ci.Link->Run(this, ci.ID);
-}
-
-void TrunkClient::ReleaseConnect(ConnectID cnt) noexcept {
-  ConnectInfo ci;
-  bool find = false;
-  std::unique_lock<std::mutex> lk(connects_lock_);
-  for (auto i = connects_.begin(); i != connects_.end(); ++i) {
-    if (i->ID == cnt) {
-      ci = *i;
-      find = true;
-      connects_.erase(i);
-      break;
-    }
-  }
-  lk.unlock();
-
-  if (!find) {
-    // Нет такого коннекта
-    return;
-  }
-}
-
-void TrunkClient::SendConnect(
+void TrunkClient::SendConnectInformation(
     ConnectID cnt, PointID point, unsigned int timeout) {
-  auto buf = GetBuffer();
-  PacketConnectCache pc;
-  pc.PacketData = buf;
-  pc.PacketSize = sizeof(PacketConnect);
-  pc.CtxID = cnt;
-
-  auto curt = std::chrono::steady_clock::now();
-  pc.Deadline = curt + std::chrono::milliseconds(kDeadlineTimeout);
-  pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
-
   assert(sizeof(PacketConnect) <= kPacketBufferSize);
-  auto pkt = (PacketConnect*)(pc.PacketData.get());
-  auto cnt_bin = cnt.as_bytes();
-  assert(cnt_bin.size_bytes() == kConnectIDSize);
-  memcpy(pkt->ConnectID, cnt_bin.data(), kConnectIDSize);
+  auto buf = GetBuffer();
+  auto pkt = (PacketConnect*)(buf.get());
+  CopyConnectID(pkt->ConnectID, cnt);
   pkt->PacketCommand = kTrunkCommandCreateConnect;
   pkt->PointID = point;
   pkt->Timeout = timeout;
 
-  std::unique_lock<std::mutex> lk(packet_cache_lock_);
-  packet_connect_cache_.push_back(pc);
+  PacketInfo info;
+  info.CtxID = cnt;
+  info.PacketID = kEmptyPacketID;
+  info.PacketData = buf;
+  info.PacketSize = sizeof(PacketConnect);
+
+  PacketConnectCache pc;
+  pc.info = info;
+  auto curt = std::chrono::steady_clock::now();
+  pc.Deadline = curt + std::chrono::milliseconds(kDeadlineTimeout);
+  pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+
+  std::unique_lock<std::mutex> lk(connect_cache_lock_);
+  connect_cache_.push_back(pc);
   lk.unlock();
 
-  trunk_socket_.async_send_to(boost::asio::buffer(buf.get(), pc.PacketSize),
-      points_.front(),
-      [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+  SendPacket(info);
+
+  // TRACE
+  std::printf("-- Send connect information. Id: %s, Point %u\n",
+      uuids::to_string(cnt).c_str(), point);
 }
 
-std::shared_ptr<TrunkClient::PacketBuffer> TrunkClient::GetBuffer() {
-  return std::make_shared<TrunkClient::PacketBuffer>();
-}
+void TrunkClient::OnCacheResend() {
+  TrunkLink::OnCacheResend();
 
-uint32_t TrunkClient::GetPacketIndex(ConnectID cnt) {
-  std::lock_guard<std::mutex> lk(connects_lock_);
-  for (auto& item : connects_) {
-    if (item.ID == cnt) {
-      auto res = item.NextIndex;
-      ++item.NextIndex;
-      return res;
-    }
-  }
-  return kBadPacketIndex;
-}
-
-void TrunkClient::CacheResend() {
   auto curt = std::chrono::steady_clock::now();
-  std::lock_guard<std::mutex> lk(packet_cache_lock_);
-  for (auto& item : packet_connect_cache_) {
+  std::lock_guard<std::mutex> lk(connect_cache_lock_);
+  for (auto& item : connect_cache_) {
     // TODO process deadline ????
 
     if (item.NextSend > curt) {
       continue;
     }
     item.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
-    auto pd = item.PacketData;
-    trunk_socket_.async_send_to(
-        boost::asio::buffer(item.PacketData.get(), item.PacketSize),
-        points_.front(),
-        [pd](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+    SendPacket(item.info);
+
+    // TRACE
+    std::printf("-- ReSend connect information for id %s\n",
+        uuids::to_string(item.info.CtxID).c_str());
   }
 }
+
+TrunkClient::~TrunkClient() {}
+
+void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
+  assert(link);
+  uuids::uuid_random_generator gen{generator_};
+  uuids::uuid cnt = gen();
+
+  AddOutLink(cnt, link);
+
+  SendConnectInformation(cnt, point, kResendTimeout);
+}
+
 
 void TrunkClient::ReceiveTrunkData() {
   trunk_socket_.async_receive_from(
@@ -187,70 +262,35 @@ void TrunkClient::ReceiveTrunkData() {
       });
 }
 
-void TrunkClient::RequestCacheResend() {
-  std::chrono::milliseconds intrv{kResendTick};
-  cache_timer_.expires_after(intrv);
-  cache_timer_.async_wait([this](const boost::system::error_code& err) {
-    // TODO Error checking
-
-    CacheResend();
-
-    RequestCacheResend();
-  });
+void TrunkClient::SendPacket(PacketInfo pkt) {
+  auto pd = pkt.PacketData;
+  trunk_socket_.async_send_to(boost::asio::buffer(pd.get(), pkt.PacketSize),
+      points_.front(),
+      [pd](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
 }
 
 
 void TrunkClient::ProcessAckConnectData(
     uuids::uuid cnt, const PacketHeader* info) {
-  std::lock_guard<std::mutex> lk(packet_cache_lock_);
-  for (auto it = packet_connect_cache_.begin();
-       it != packet_connect_cache_.end();) {
-    if (it->CtxID != cnt) {
+  // TRACE
+  std::printf(
+      "-- Receive ack for connection id %s\n", uuids::to_string(cnt).c_str());
+
+  std::lock_guard<std::mutex> lk(connect_cache_lock_);
+  for (auto it = connect_cache_.begin(); it != connect_cache_.end();) {
+    if (it->info.CtxID != cnt) {
       ++it;
     } else {
-      it = packet_connect_cache_.erase(it);
+      it = connect_cache_.erase(it);
     }
   }
 }
 
 
-bool TrunkClient::SendData(ConnectID cnt, void* data, size_t data_size) {
-  std::printf("DEBUG: send %u bytes to connect %s\n", (unsigned int)data_size,
-      uuids::to_string(cnt).c_str());
-
-  auto buf = GetBuffer();
-  PacketDataCache pd;
-  pd.PacketData = buf;
-  pd.PacketSize = sizeof(PacketData) + data_size;
-  pd.CtxID = cnt;
-
-  assert((sizeof(PacketData) + data_size) <= kPacketBufferSize);
-  auto pkt = (PacketData*)(pd.PacketData.get());
-  auto cnt_bin = cnt.as_bytes();
-  assert(cnt_bin.size_bytes() == kConnectIDSize);
-  memcpy(pkt->ConnectID, cnt_bin.data(), kConnectIDSize);
-  pkt->PacketCommand = kTrunkCommandDataOut;
-  pkt->PacketIndex = GetPacketIndex(cnt);
-  if (pkt->PacketIndex == kBadPacketIndex) {
-    return false;
-  }
-  pkt->DataSize = data_size;
-
-  std::unique_lock<std::mutex> lk(packet_cache_lock_);
-  packet_data_cache_.push_back(pd);
-  lk.unlock();
-
-  trunk_socket_.async_send_to(boost::asio::buffer(buf.get(), pd.PacketSize),
-      points_.front(),
-      [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
-
-  return false;
-}
-
 TrunkServer::TrunkServer(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
     std::function<std::shared_ptr<OutLink>(PointID)> link_fabric)
-    : asio_context_(ctx), link_fabric_(link_fabric) {
+    : TrunkLink(ctx, true), asio_context_(ctx), link_fabric_(link_fabric) {
   for (auto& p : trpoints) {
     trunk_sockets_.emplace_back(ServerSocket{{ctx, p}, GetBuffer()});
   }
