@@ -32,6 +32,9 @@ void TrunkLink::ProcessTrunkData(
       }
       ProcessConnectData(cnt, static_cast<const PacketConnect*>(hdr));
       break;
+    case kTrunkCommandAckCreateConnect:
+      ProcessAckConnectData(cnt, hdr);
+      break;
   }
 }
 
@@ -47,6 +50,8 @@ TrunkClient::TrunkClient(boost::asio::io_context& ctx,
   std::generate(std::begin(seed_data), std::end(seed_data), std::ref(rd));
   std::seed_seq seq(std::begin(seed_data), std::end(seed_data));
   generator_ = std::mt19937(seq);
+
+  ReceiveTrunkData();
 
   RequestCacheResend();
 }
@@ -155,6 +160,21 @@ void TrunkClient::CacheResend() {
   }
 }
 
+void TrunkClient::ReceiveTrunkData() {
+  trunk_socket_.async_receive_from(
+      boost::asio::buffer(trunk_read_buffer_, kPacketBufferSize),
+      trunk_read_point_,
+      [this](boost::system::error_code err, std::size_t data_size) {
+        if (err) {
+          // TODO Error processing
+        } else {
+          ProcessTrunkData(trunk_read_point_, trunk_read_buffer_, data_size);
+        }
+
+        ReceiveTrunkData();
+      });
+}
+
 void TrunkClient::RequestCacheResend() {
   std::chrono::milliseconds intrv{kResendTick};
   cache_timer_.expires_after(intrv);
@@ -166,6 +186,21 @@ void TrunkClient::RequestCacheResend() {
     RequestCacheResend();
   });
 }
+
+
+void TrunkClient::ProcessAckConnectData(
+    uuids::uuid cnt, const PacketHeader* info) {
+  std::lock_guard<std::mutex> lk(packet_cache_lock_);
+  for (auto it = packet_connect_cache_.begin();
+       it != packet_connect_cache_.end();) {
+    if (it->CtxID != cnt) {
+      ++it;
+    } else {
+      it = packet_connect_cache_.erase(it);
+    }
+  }
+}
+
 
 bool TrunkClient::SendData(ConnectID cnt, void* data, size_t data_size) {
   std::printf("DEBUG: send %u bytes to connect %s\n", (unsigned int)data_size,

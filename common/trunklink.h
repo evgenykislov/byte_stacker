@@ -81,7 +81,8 @@ class TrunkLink {
 
   // Обработчики отдельных команд
   virtual void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info){};
-
+  virtual void ProcessAckConnectData(
+      uuids::uuid cnt, const PacketHeader* info){};
 
  private:
   TrunkLink(const TrunkLink&) = delete;
@@ -166,6 +167,8 @@ class TrunkClient: public TrunkLink {
   std::mutex connects_lock_;
 
   boost::asio::ip::udp::socket trunk_socket_;
+  PacketBuffer trunk_read_buffer_;
+  boost::asio::ip::udp::endpoint trunk_read_point_;
 
   std::vector<PacketConnectCache> packet_connect_cache_;
   std::vector<PacketDataCache> packet_data_cache_;
@@ -187,6 +190,9 @@ class TrunkClient: public TrunkLink {
   // TODO Descr
   void CacheResend();
 
+  void ReceiveTrunkData();
+
+
   // Asio Requesters
 
   /*! Запросить переотправку кэша */
@@ -195,6 +201,9 @@ class TrunkClient: public TrunkLink {
   void SendPacket(PacketInfo pkt) override {
     // TODO Implement
   }
+
+  void ProcessAckConnectData(
+      uuids::uuid cnt, const PacketHeader* info) override;
 };
 
 
