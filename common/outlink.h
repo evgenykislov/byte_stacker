@@ -27,6 +27,8 @@ class TrunkLink;
 - запускаем подключение/чтение на сокете: вызываем метод Run(); */
 class OutLink {
  public:
+  /*! Конструктор экземпляра на основе сокета с установленным соединением
+  \param socket сокет с соединением */
   OutLink(boost::asio::ip::tcp::socket&& socket);
 
   /*! Конструктор экземпляра на основе адреса и порта (например mysite.com:80).
@@ -35,7 +37,8 @@ class OutLink {
   функция отключения для hoster-а.
   \param ctx сетевой контекст бибилиотеки asio
   \param address адрес для подключения. Может быть как явный ip-адрес, так и имя
-  сайта \param port порт для подключения */
+  сайта
+  \param port порт для подключения */
   OutLink(boost::asio::io_context& ctx, std::string address, uint16_t port);
 
   OutLink(OutLink&& arg) = default;

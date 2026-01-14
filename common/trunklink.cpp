@@ -47,6 +47,9 @@ void TrunkLink::RequestCacheResend() {
 
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
+  std::printf(
+      "TRACE: Send %u bytes of data into trunk\n", (unsigned int)data_size);
+
   if (data_size > kMaxChunkSize) {
     assert(false);
     return;
@@ -126,6 +129,8 @@ void TrunkLink::ProcessTrunkData(
 
 void TrunkLink::ProcessDataOut(
     uuids::uuid cnt, const PacketData* info, const void* data) {
+  std::printf("TRACE: -- Got %u bytes from trunk for connect %s\n",
+      (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
   auto link = GetOutLink(cnt);
   if (!link) {
     // Нет такого подключения
@@ -133,30 +138,33 @@ void TrunkLink::ProcessDataOut(
     return;
   }
 
+  // Выдадим данные на внешний линк
   link->SendData(data, info->DataSize);
 }
 
-void TrunkLink::AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link) {
+void TrunkLink::IntAddOutLinkWOLock(
+    uuids::uuid cnt, std::shared_ptr<OutLink> link) {
   OutLinkInfo info;
   info.connect_id = cnt;
   info.link = link;
   info.next_index_to_trunk = 0;
-
-  std::unique_lock lk(out_links_lock_);
   out_links_.push_back(info);
-  lk.unlock();
 
   link->Run(this, cnt);
 }
 
-std::shared_ptr<OutLink> TrunkLink::GetOutLink(uuids::uuid cnt) {
-  std::unique_lock lk(out_links_lock_);
+std::shared_ptr<OutLink> TrunkLink::GetOutLinkWOLock(uuids::uuid cnt) {
   for (auto& item : out_links_) {
     if (item.connect_id == cnt) {
       return item.link;
     }
   }
   return std::shared_ptr<OutLink>();
+}
+
+std::shared_ptr<OutLink> TrunkLink::GetOutLink(uuids::uuid cnt) {
+  std::unique_lock lk(out_links_lock_);
+  return GetOutLinkWOLock(cnt);
 }
 
 std::shared_ptr<TrunkLink::PacketBuffer> TrunkLink::GetBuffer() {
@@ -241,7 +249,16 @@ void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
   uuids::uuid_random_generator gen{generator_};
   uuids::uuid cnt = gen();
 
-  AddOutLink(cnt, link);
+  std::unique_lock lk(out_links_lock_);
+  auto exist_link = GetOutLinkWOLock(cnt);
+  if (exist_link) {
+    // Такая внешняя связь уже существует
+    // Странно, но теоретически возможно
+    // Ничего не делаем, выходим, забываем про эту связь
+    return;
+  }
+  IntAddOutLinkWOLock(cnt, link);
+  lk.unlock();
 
   SendConnectInformation(cnt, point, kResendTimeout);
 }
@@ -296,7 +313,7 @@ TrunkServer::TrunkServer(boost::asio::io_context& ctx,
   }
 
   for (size_t index = 0; index < trunk_sockets_.size(); ++index) {
-    ReceiveTrunkData(index);
+    RequestReadingTrunk(index);
   }
 }
 
@@ -307,7 +324,7 @@ std::shared_ptr<TrunkServer::PacketBuffer> TrunkServer::GetBuffer() {
   return std::make_shared<TrunkServer::PacketBuffer>();
 }
 
-void TrunkServer::ReceiveTrunkData(size_t index) {
+void TrunkServer::RequestReadingTrunk(size_t index) {
   auto& ts = trunk_sockets_[index];
   ts.socket.async_receive_from(
       boost::asio::buffer(ts.buffer.get(), kPacketBufferSize), ts.client_holder,
@@ -315,28 +332,30 @@ void TrunkServer::ReceiveTrunkData(size_t index) {
         if (err) {
           // TODO Error processing
         } else {
+          // Получили из канала блок данных
           auto& ts = trunk_sockets_[index];
           uuids::uuid cnt;
           if (!GetPacketConnectID(ts.buffer.get(), data_size, cnt)) {
-            // Битый пакет
-            // TODO что делать
+            // Битый пакет; Формат неправильный
+            // Вероятная причина: левый сервис послал тестовый пакет на пробу
+            // Пропускаем этот пакет
           } else {
+            // Пакет правильного формата. Берём в работу (и запоминаем откуда он
+            // пришёл)
             AddClientLink({cnt, index, ts.client_holder});
             ProcessTrunkData(ts.client_holder, ts.buffer.get(), data_size);
           }
         }
 
-        ReceiveTrunkData(index);
+        RequestReadingTrunk(index);
       });
 }
 
 
 void TrunkServer::ProcessConnectData(
     uuids::uuid cnt, const PacketConnect* info) {
-  // TRACE
-  std::printf("-- Request connect to point %u. Id: %s\n", info->PointID,
+  std::printf("TRACE: -- Request connect to point %u. Id: %s\n", info->PointID,
       uuids::to_string(cnt).c_str());
-  std::cout.flush();
 
   // Отправим подтверждение на получение пакета
   assert(sizeof(PacketHeader) <= kPacketBufferSize);
@@ -351,14 +370,22 @@ void TrunkServer::ProcessConnectData(
   pi.PacketSize = sizeof(PacketHeader);
   SendPacket(pi);
 
+  std::unique_lock lk(out_links_lock_);
+  auto exist_link = GetOutLinkWOLock(cnt);
+  if (exist_link) {
+    // Такая внешняя связь уже существует
+    // Такое легко может быть, когда пришёл дубликат сообщения о новом коннекте
+    // Ничего не создаём, выходим
+    return;
+  }
   // Создадим внешний коннект
   auto ol = link_fabric_(info->PointID);
   if (!ol) {
     // TODO ERROR Can't create link
     return;
   }
-
-  AddOutLink(cnt, ol);
+  IntAddOutLinkWOLock(cnt, ol);
+  lk.unlock();
 }
 
 

@@ -79,7 +79,9 @@ class TrunkLink {
     uint32_t PacketSize;
   };
 
+  std::mutex out_links_lock_;
 
+  // TODO parameter client - remove ???
   void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
       size_t data_size);
 
@@ -96,7 +98,16 @@ class TrunkLink {
   void ProcessDataOut(
       uuids::uuid cnt, const PacketData* info, const void* data);
 
-  void AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link);
+  /*! Внутренняя функция: добавляет внешнюю связь для заданного коннекта.
+  Функцию необходимо вызывать с захваченной блокировкой out_links_lock_.
+  \param cnt идентификатор подключения
+  \param link экземпляр объекта внешней связи */
+  void IntAddOutLinkWOLock(uuids::uuid cnt, std::shared_ptr<OutLink> link);
+
+  // TODO
+  // Вызов должен быть закрыт out_links_lock_
+  std::shared_ptr<OutLink> GetOutLinkWOLock(uuids::uuid cnt);
+
 
   std::shared_ptr<OutLink> GetOutLink(uuids::uuid cnt);
 
@@ -143,8 +154,9 @@ class TrunkLink {
 
   bool server_side_;
 
+  // TODO
+  // Массив закрывается out_links_lock_, которая заявлена как protected
   std::vector<OutLinkInfo> out_links_;
-  std::mutex out_links_lock_;
 
   std::vector<PacketDataCache> packet_data_cache_;
   std::mutex packet_data_cache_lock_;
@@ -269,8 +281,13 @@ class TrunkServer: public TrunkLink {
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();
 
-  // TODO Descr
-  void ReceiveTrunkData(size_t index);
+  /*! Функция инициации (запроса) асинхронного чтения данных по транковой связи
+  из порта с индексом index. Если в транковой связи несколько портов, то делать
+  запрос чтения нужно по всем портам сразу. Функция неблокирующая, возвращает
+  управление сразу
+  \param index номер порта в транковой связи (для разделения отдельных портов)
+*/
+  void RequestReadingTrunk(size_t index);
 
   // TODO Descr
 
