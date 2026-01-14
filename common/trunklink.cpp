@@ -21,17 +21,19 @@ TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side)
   RequestCacheResend();
 }
 
+
 uint32_t TrunkLink::GetNextPacketIndex(ConnectID cnt) {
-  std::lock_guard<std::mutex> lk(connects_lock_);
-  for (auto& item : connects_) {
-    if (item.ID == cnt) {
-      auto res = item.NextIndex;
-      ++item.NextIndex;
+  std::lock_guard lk(out_links_lock_);
+  for (auto& item : out_links_) {
+    if (item.connect_id == cnt) {
+      auto res = item.next_index_to_trunk;
+      ++item.next_index_to_trunk;
       return res;
     }
   }
   return kBadPacketIndex;
 }
+
 
 void TrunkLink::RequestCacheResend() {
   std::chrono::milliseconds intrv{kResendTick};

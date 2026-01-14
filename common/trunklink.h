@@ -108,7 +108,6 @@ class TrunkLink {
   // Вызов должен быть закрыт out_links_lock_
   std::shared_ptr<OutLink> GetOutLinkWOLock(uuids::uuid cnt);
 
-
   std::shared_ptr<OutLink> GetOutLink(uuids::uuid cnt);
 
   // TODO Descr?
@@ -141,16 +140,6 @@ class TrunkLink {
 
 
   static const size_t kResendTick = 100;
-
-  struct ConnectInfo {
-    ConnectID ID;
-    uint32_t NextIndex;  //!< Индекс следующего пакета для отсылки в транк
-  };
-
-
-  std::vector<ConnectInfo> connects_;
-  std::mutex connects_lock_;
-
 
   bool server_side_;
 
