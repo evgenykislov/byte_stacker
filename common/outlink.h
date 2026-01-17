@@ -1,6 +1,7 @@
 #ifndef OUTLINK_H
 #define OUTLINK_H
 
+#include <atomic>
 #include <cstdint>
 #include <list>
 #include <string>
@@ -52,7 +53,7 @@ class OutLink {
   void Run(TrunkLink* hoster, ConnectID cnt);
 
   // TODO Descr
-  void SendData(const void* data, size_t data_size);
+  void SendData(uint32_t chunk_id, const void* data, size_t data_size);
 
  private:
   OutLink() = delete;
@@ -60,6 +61,7 @@ class OutLink {
   OutLink& operator=(const OutLink&) = delete;
 
   static const size_t kChunkSize = 800;
+  static const size_t kMaxChunkAmount = 5000;
 
   boost::asio::ip::tcp::socket socket_;  //! Сокет подключения
   boost::asio::ip::tcp::resolver resolver_;
@@ -70,6 +72,27 @@ class OutLink {
   TrunkLink* hoster_;
   ConnectID selfid_;
 
+  // Система выдачи данных наружу
+
+  /*! Финальный буфер для выдачи данных в сетевой сокет. Буфер работает в
+  квази-однопоточном режиме: только одна функция в каждый момент работает с
+  буфером */
+  std::vector<uint8_t> network_write_buffer_;
+
+  /*! Флаг, что нельзя начинать новую операцию записи: она сейчас уже
+  "в процессе", или ещё не открыты сокеты */
+  std::atomic_flag network_write_operation_;
+
+  /*! Отдельные чанки для сборки полноценного блока данных */
+  std::map<uint32_t, std::vector<uint8_t>> write_chunks_;
+
+  /*! Идентификатор пакета, который сейчас валиден и ожидается */
+  uint32_t next_write_chunk_id_;
+
+  std::mutex write_chunks_lock_;
+
+  void FillNetworkBuffer();
+
 
   /*! Функция запрос чтения данных. Функция асинхронная, данные запрашиваются и
   функция сразу завершает работу. Для каждого экземпляра подключения функция
@@ -78,6 +101,10 @@ class OutLink {
 
   /*! Функция запроса подключения к первой точке (от резолвинга) */
   void RequestConnect();
+
+
+  // TODO Descr
+  void RequestWrite();
 };
 
 

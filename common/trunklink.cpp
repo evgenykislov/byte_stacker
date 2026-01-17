@@ -141,7 +141,7 @@ void TrunkLink::ProcessDataOut(
   }
 
   // Выдадим данные на внешний линк
-  link->SendData(data, info->DataSize);
+  link->SendData(info->PacketIndex, data, info->DataSize);
 }
 
 void TrunkLink::IntAddOutLinkWOLock(
