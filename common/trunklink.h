@@ -18,7 +18,9 @@ enum TrunkCommand : uint32_t {
       11,  // Пакет данных с локальной точки на внешний сервер
   kTrunkCommandDataIn = 12,
   kTrunkCommandAckDataOut = 21,
-  kTrunkCommandAckDataIn = 22
+  kTrunkCommandAckDataIn = 22,
+  kTrunkCommandLive =
+      31,  //!< Live-пакет для поддержания актуальности соединения
 };
 
 
@@ -162,6 +164,10 @@ class TrunkLink {
 
   /*! Запросить переотправку кэша */
   void RequestCacheResend();
+
+
+  // TODO descr
+  void SendLivePacket();
 };
 
 

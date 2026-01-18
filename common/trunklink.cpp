@@ -48,6 +48,13 @@ void TrunkLink::RequestCacheResend() {
 }
 
 
+void TrunkLink::SendLivePacket() {
+  // TODO Implemntation
+
+  // TODO call this every 1-3-5 minutes
+}
+
+
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
   std::printf(
       "TRACE: Send %u bytes of data into trunk\n", (unsigned int)data_size);
