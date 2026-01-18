@@ -48,12 +48,12 @@ OutLink::OutLink(
 
 
 void OutLink::RequestRead() {
-  std::printf("TRACE: -- Request read for outlink socket\n");
+  //  std::printf("TRACE: -- Request read for outlink socket\n");
   socket_.async_read_some(boost::asio::buffer(read_buffer_),
       [this](
           const boost::system::error_code& err, std::size_t bytes_transferred) {
-        std::printf("TRACE: -- Read some from outlink socket\n");
-        //
+        //        std::printf("TRACE: -- Read some from outlink socket\n");
+        // TODO Error processing
         if (err) {
           // TODO ошибка чтения
           return;

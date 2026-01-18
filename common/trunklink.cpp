@@ -56,8 +56,8 @@ void TrunkLink::SendLivePacket() {
 
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
-  std::printf(
-      "TRACE: Send %u bytes of data into trunk\n", (unsigned int)data_size);
+  //  std::printf(
+  //      "TRACE: Send %u bytes of data into trunk\n", (unsigned int)data_size);
 
   if (data_size > kMaxChunkSize) {
     assert(false);
@@ -423,8 +423,9 @@ void TrunkServer::RequestReadingTrunk(size_t index) {
 
 void TrunkServer::ProcessConnectData(
     uuids::uuid cnt, const PacketConnect* info) {
-  std::printf("TRACE: -- Request connect to point %u. Id: %s\n", info->PointID,
-      uuids::to_string(cnt).c_str());
+  //  std::printf("TRACE: -- Request connect to point %u. Id: %s\n",
+  //  info->PointID,
+  //      uuids::to_string(cnt).c_str());
 
   // Отправим подтверждение на получение пакета
   assert(sizeof(PacketHeader) <= kPacketBufferSize);
