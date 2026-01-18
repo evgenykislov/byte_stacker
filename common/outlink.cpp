@@ -119,8 +119,8 @@ void OutLink::RequestWrite() {
     FillNetworkBuffer();
   }
 
-  std::printf("TRACE: -- Writing %u bytes to outlink socket\n",
-      network_write_buffer_.size());
+  //  std::printf("TRACE: -- Writing %u bytes to outlink socket\n",
+  //      network_write_buffer_.size());
 
   socket_.async_write_some(boost::asio::buffer(network_write_buffer_.data(),
                                network_write_buffer_.size()),

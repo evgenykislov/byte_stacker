@@ -177,8 +177,8 @@ void TrunkLink::ProcessTrunkData(
 
 void TrunkLink::ProcessDataToOutlink(
     uuids::uuid cnt, const PacketData* info, const void* data) {
-  std::printf("TRACE: -- Got %u bytes from trunk for connect %s\n",
-      (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
+  //  std::printf("TRACE: -- Got %u bytes from trunk for connect %s\n",
+  //      (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
   auto link = GetOutLink(cnt);
   if (!link) {
     // Нет такого подключения
