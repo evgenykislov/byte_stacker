@@ -95,8 +95,13 @@ class TrunkLink {
   virtual void ProcessAckConnectData(
       uuids::uuid cnt, const PacketHeader* info){};
 
-  void ProcessDataOut(
+  // TODO Descr
+  void ProcessDataToOutlink(
       uuids::uuid cnt, const PacketData* info, const void* data);
+
+  // TODO Descr
+  void ProcessAckData(uuids::uuid cnt, const PacketAck* info);
+
 
   /*! Внутренняя функция: добавляет внешнюю связь для заданного коннекта.
   Функцию необходимо вызывать с захваченной блокировкой out_links_lock_.

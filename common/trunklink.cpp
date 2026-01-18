@@ -102,6 +102,30 @@ void TrunkLink::ProcessTrunkData(
 
   auto hdr = static_cast<const PacketHeader*>(data);
   uuids::uuid cnt(hdr->ConnectID, hdr->ConnectID + sizeof(hdr->ConnectID));
+
+  if (server_side_) {
+    switch (hdr->PacketCommand) {
+      case kTrunkCommandAckCreateConnect:
+      case kTrunkCommandDataIn:
+      case kTrunkCommandAckDataOut:
+        // Это всё ошибочниые команды
+        // TODO ERROR
+        return;
+        break;
+    }
+  } else {
+    // Клиентская сторона
+    switch (hdr->PacketCommand) {
+      case kTrunkCommandCreateConnect:
+      case kTrunkCommandDataOut:
+      case kTrunkCommandAckDataIn:
+        // Это всё ошибочниые команды
+        // TODO ERROR
+        return;
+        break;
+    }
+  }
+
   switch (hdr->PacketCommand) {
     case kTrunkCommandCreateConnect:
       if (data_size < sizeof(PacketConnect)) {
@@ -114,22 +138,37 @@ void TrunkLink::ProcessTrunkData(
       ProcessAckConnectData(cnt, hdr);
       break;
     case kTrunkCommandDataOut:
+    case kTrunkCommandDataIn:
       if (data_size < sizeof(PacketData)) {
         // Неполный формат
         return;
       }
 
-      auto pd = static_cast<const PacketData*>(hdr);
-      if (data_size != (sizeof(PacketData) + pd->DataSize)) {
-        // Ошибка формата
+      {
+        auto pd = static_cast<const PacketData*>(hdr);
+        if (data_size != (sizeof(PacketData) + pd->DataSize)) {
+          // Ошибка формата
+          return;
+        }
+        ProcessDataToOutlink(cnt, pd, pd + 1);
+      }
+      break;
+    case kTrunkCommandAckDataOut:
+    case kTrunkCommandAckDataIn:
+      if (data_size < sizeof(PacketAck)) {
+        // Неполный формат
         return;
       }
-      ProcessDataOut(cnt, pd, pd + 1);
+
+      {
+        auto pa = static_cast<const PacketAck*>(hdr);
+        ProcessAckData(cnt, pa);
+      }
       break;
   }
 }
 
-void TrunkLink::ProcessDataOut(
+void TrunkLink::ProcessDataToOutlink(
     uuids::uuid cnt, const PacketData* info, const void* data) {
   std::printf("TRACE: -- Got %u bytes from trunk for connect %s\n",
       (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
@@ -140,8 +179,27 @@ void TrunkLink::ProcessDataOut(
     return;
   }
 
+  // Отправим подтверждение на получение пакета
+  assert(sizeof(PacketAck) <= kPacketBufferSize);
+  auto buf = GetBuffer();
+  auto pkt = (PacketAck*)(buf.get());
+  CopyConnectID(pkt->ConnectID, cnt);
+  pkt->PacketCommand =
+      server_side_ ? kTrunkCommandAckDataOut : kTrunkCommandAckDataIn;
+  pkt->PacketIndex = info->PacketIndex;
+  PacketInfo pi;
+  pi.CtxID = cnt;
+  pi.PacketID = kEmptyPacketID;
+  pi.PacketData = buf;
+  pi.PacketSize = sizeof(PacketHeader);
+  SendPacket(pi);
+
   // Выдадим данные на внешний линк
   link->SendData(info->PacketIndex, data, info->DataSize);
+}
+
+void TrunkLink::ProcessAckData(uuids::uuid cnt, const PacketAck* info) {
+  // TODO IMPLEMENT
 }
 
 void TrunkLink::IntAddOutLinkWOLock(
@@ -173,7 +231,9 @@ std::shared_ptr<TrunkLink::PacketBuffer> TrunkLink::GetBuffer() {
   return std::make_shared<TrunkClient::PacketBuffer>();
 }
 
-void TrunkLink::OnCacheResend() {}
+void TrunkLink::OnCacheResend() {
+  // TODO IMPLEMENT
+}
 
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
