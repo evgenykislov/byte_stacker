@@ -1,5 +1,7 @@
 /out/*
 /.vs/*
+/build/*
+/build-*/*
 
 # Prerequisites
 *.d
