@@ -81,6 +81,16 @@ class TrunkLink {
     uint32_t PacketSize;
   };
 
+  struct OutLinkInfo {
+    uuids::uuid connect_id;
+    std::shared_ptr<OutLink> link;
+    uint32_t next_index_to_trunk;  //!< Индекс пакета для следующего пакета
+  };
+
+
+  // TODO
+  // Массив закрывается out_links_lock_, которая заявлена как protected
+  std::vector<OutLinkInfo> out_links_;
   std::mutex out_links_lock_;
 
   // TODO parameter client - remove ???
@@ -123,18 +133,15 @@ class TrunkLink {
   // TODO Descr
   virtual void OnCacheResend();
 
+  // TODO Descr
+  void RemoveOutLink(uuids::uuid cnt);
+
  private:
   TrunkLink() = delete;
   TrunkLink(const TrunkLink&) = delete;
   TrunkLink(TrunkLink&&) = delete;
   TrunkLink& operator=(const TrunkLink&) = delete;
   TrunkLink& operator=(TrunkLink&&) = delete;
-
-  struct OutLinkInfo {
-    uuids::uuid connect_id;
-    std::shared_ptr<OutLink> link;
-    uint32_t next_index_to_trunk;  //!< Индекс пакета для следующего пакета
-  };
 
 
   struct PacketDataCache {  // TODO remove due to parent class
@@ -149,10 +156,6 @@ class TrunkLink {
   static const size_t kResendTick = 100;
 
   bool server_side_;
-
-  // TODO
-  // Массив закрывается out_links_lock_, которая заявлена как protected
-  std::vector<OutLinkInfo> out_links_;
 
   std::vector<PacketDataCache> packet_data_cache_;
   std::mutex packet_data_cache_lock_;

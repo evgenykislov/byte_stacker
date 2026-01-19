@@ -242,6 +242,13 @@ void TrunkLink::OnCacheResend() {
   // TODO IMPLEMENT
 }
 
+void TrunkLink::RemoveOutLink(uuids::uuid cnt) {
+  std::lock_guard lk(out_links_lock_);
+  auto tail = std::remove_if(out_links_.begin(), out_links_.end(),
+      [cnt](OutLinkInfo info) { return cnt == info.connect_id; });
+  out_links_.erase(tail, out_links_.end());
+}
+
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints)
