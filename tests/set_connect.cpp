@@ -285,7 +285,7 @@ TEST_F(TcpForwardingTest, ConnectionForwardingTest) {
 
   const std::string app2_executable = "../byte_stacker_out/byte_stacker_out";
   const std::vector<std::string> app2_args = {
-      "--external1=127.0.0.2:50001", "--trunk=127.0.0.1:40001"};
+      "--external1=127.0.0.2:50001", "--trunk=127.0.0.2:40001"};
 
   // Запускаем приложения
   ASSERT_TRUE(startFirstApplication(app1_executable, app1_args))
