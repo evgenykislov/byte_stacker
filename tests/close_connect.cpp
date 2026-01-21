@@ -52,28 +52,11 @@ namespace {
  */
 class TcpConnectionForwardingTest : public ::testing::Test {
 protected:
-    io_context io_ctx_;
-    std::unique_ptr<io_context::work> work_;
-    std::thread io_thread_;
 
     void SetUp() override {
-        // Создаем work guard чтобы io_context не завершился преждевременно
-        work_ = std::make_unique<io_context::work>(io_ctx_);
-
-        // Запускаем io_context в отдельном потоке
-        io_thread_ = std::thread([this]() {
-            io_ctx_.run();
-        });
     }
 
     void TearDown() override {
-        // Останавливаем io_context
-        work_.reset();
-        io_ctx_.stop();
-
-        if (io_thread_.joinable()) {
-            io_thread_.join();
-        }
     }
 };
 
@@ -98,6 +81,18 @@ TEST_F(TcpConnectionForwardingTest, ConnectionClosePropagation) {
     std::promise<void> disconnect_promise;
     auto accept_future = accept_promise.get_future();
     auto disconnect_future = disconnect_promise.get_future();
+
+    io_context io_ctx_;
+    std::unique_ptr<io_context::work> work_;
+    std::thread io_thread_;
+    // Создаем work guard чтобы io_context не завершился преждевременно
+    work_ = std::make_unique<io_context::work>(io_ctx_);
+
+    // Запускаем io_context в отдельном потоке
+    io_thread_ = std::thread([&io_ctx_]() {
+        io_ctx_.run();
+    });
+
 
     // Шаг 1: Создаем TCP сервер на address_to для приема переадресованного соединения
     ip::tcp::acceptor acceptor(io_ctx_);
@@ -213,6 +208,16 @@ TEST_F(TcpConnectionForwardingTest, ConnectionClosePropagation) {
     // Очистка
     accepted_socket->close(ec);
     acceptor.close(ec);
+
+
+    // Останавливаем io_context
+    work_.reset();
+    io_ctx_.stop();
+
+    if (io_thread_.joinable()) {
+        io_thread_.join();
+    }
+
 }
 
 } // anonymous namespace
