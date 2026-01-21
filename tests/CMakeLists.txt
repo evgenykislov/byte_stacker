@@ -8,11 +8,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 enable_testing()
 
 set(SOURCES_FILES
-  "set_connect.cpp"
   "close_connect.cpp"
+  "fixture_direct_pipe.cpp"
+  "set_connect.cpp"
 )
 
 set(HEADERS_FILES
+  "fixture_direct_pipe.h"
 )
 
 find_package(GTest CONFIG REQUIRED)
