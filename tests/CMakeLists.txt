@@ -9,6 +9,7 @@ enable_testing()
 
 set(SOURCES_FILES
   "set_connect.cpp"
+  "close_connect.cpp"
 )
 
 set(HEADERS_FILES
