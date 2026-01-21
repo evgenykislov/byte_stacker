@@ -430,11 +430,3 @@ TEST_F(TcpForwardingTest, TimeoutTest) {
   std::cout << "  Время срабатывания таймаута: " << elapsed << " мс"
             << std::endl;
 }
-
-//==============================================================================
-// Точка входа для тестов
-//==============================================================================
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
