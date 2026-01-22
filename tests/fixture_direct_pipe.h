@@ -1,16 +1,18 @@
 #ifndef FIXTURE_DIRECT_PIPE_H
 #define FIXTURE_DIRECT_PIPE_H
 
+#include <utility>
 
+#include <boost/asio.hpp>
 #include <boost/process.hpp>
 
 #include <gtest/gtest.h>
 
-namespace process = boost::process;
-
 
 class TcpForwardingTest: public ::testing::Test {
  protected:
+  boost::asio::io_context io_ctx_;
+
   void SetUp() override;
   void TearDown() override;
 
@@ -27,12 +29,14 @@ class TcpForwardingTest: public ::testing::Test {
   }
 
  private:
-  bool StartApplication(std::unique_ptr<process::child>& programm,
-      const std::string& executable, const std::vector<std::string>& args);
-  void StopProcess(std::unique_ptr<process::child>& proc);
+  std::unique_ptr<boost::process::child> proc1;
+  std::unique_ptr<boost::process::child> proc2;
+  std::unique_ptr<boost::asio::io_context::work> work_;
+  std::thread io_thread_;
 
-  std::unique_ptr<process::child> proc1;
-  std::unique_ptr<process::child> proc2;
+  bool StartApplication(std::unique_ptr<boost::process::child>& programm,
+      const std::string& executable, const std::vector<std::string>& args);
+  void StopProcess(std::unique_ptr<boost::process::child>& proc);
 };
 
 

@@ -24,10 +24,25 @@ void TcpForwardingTest::SetUp() {
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
   std::cout << "Запущены приложения Direct Pipe" << std::endl;
+
+  // Создаем work guard чтобы io_context не завершился преждевременно
+  work_ = std::make_unique<boost::asio::io_context::work>(io_ctx_);
+
+  // Запускаем io_context в отдельном потоке
+  io_thread_ = std::thread([this]() { io_ctx_.run(); });
 }
 
 
 void TcpForwardingTest::TearDown() {
+  // Останавливаем io_context
+  work_.reset();
+  io_ctx_.stop();
+
+  if (io_thread_.joinable()) {
+    io_thread_.join();
+  }
+
+
   // Останавливаем процессы
   StopProcess(proc1);
   StopProcess(proc2);
@@ -35,11 +50,13 @@ void TcpForwardingTest::TearDown() {
 
 
 bool TcpForwardingTest::StartApplication(
-    std::unique_ptr<process::child>& process, const std::string& executable,
-    const std::vector<std::string>& args) {
+    std::unique_ptr<boost::process::child>& process,
+    const std::string& executable, const std::vector<std::string>& args) {
   try {
-    process = std::make_unique<process::child>(executable, process::args(args),
-        process::std_out > process::null, process::std_err > process::null);
+    process = std::make_unique<boost::process::child>(executable,
+        boost::process::args(args),
+        boost::process::std_out > boost::process::null,
+        boost::process::std_err > boost::process::null);
 
     // Даем процессу время на запуск
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -51,7 +68,8 @@ bool TcpForwardingTest::StartApplication(
 }
 
 
-void TcpForwardingTest::StopProcess(std::unique_ptr<process::child>& proc) {
+void TcpForwardingTest::StopProcess(
+    std::unique_ptr<boost::process::child>& proc) {
   if (!proc || !proc->valid()) {
     return;
   }
