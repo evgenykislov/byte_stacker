@@ -54,6 +54,14 @@ void TrunkLink::SendLivePacket() {
   // TODO call this every 1-3-5 minutes
 }
 
+void TrunkLink::ClearDataCache(ConnectID cnt) {
+  std::lock_guard lk(packet_data_cache_lock_);
+  auto tail =
+      std::remove_if(packet_data_cache_.begin(), packet_data_cache_.end(),
+          [cnt](PacketDataCache& item) { return item.info.CtxID == cnt; });
+  packet_data_cache_.erase(tail, packet_data_cache_.end());
+}
+
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
   //  std::printf(
@@ -99,6 +107,39 @@ void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
 
   SendPacket(info);
 }
+
+void TrunkLink::CloseConnect(ConnectID cnt) {
+  SendDisconnectInformation(cnt);
+  // Удалим сам outlink. Не здесь, через очередь
+  boost::asio::post([this, cnt]() {
+    ClearConnectInformation(cnt);
+    RemoveOutLink(cnt);
+  });
+}
+
+
+void TrunkLink::ClearConnectInformation(ConnectID cnt) { ClearDataCache(cnt); }
+
+
+void TrunkLink::SendDisconnectInformation(ConnectID cnt) {
+  assert(sizeof(PacketHeader) <= kPacketBufferSize);
+  auto buf = GetBuffer();
+  auto pkt = (PacketHeader*)(buf.get());
+  CopyConnectID(pkt->ConnectID, cnt);
+  pkt->PacketCommand = kTrunkCommandReleaseConnect;
+
+  PacketInfo info;
+  info.CtxID = cnt;
+  info.PacketID = kEmptyPacketID;
+  info.PacketData = buf;
+  info.PacketSize = sizeof(PacketHeader);
+
+  SendPacket(info);
+
+  std::printf("TRACE: -- Send disconnect information. Id: %s\n",
+      uuids::to_string(cnt).c_str());
+}
+
 
 void TrunkLink::ProcessTrunkData(
     boost::asio::ip::udp::endpoint client, const void* data, size_t data_size) {
@@ -377,6 +418,16 @@ void TrunkClient::ProcessAckConnectData(
       it = connect_cache_.erase(it);
     }
   }
+}
+
+
+void TrunkClient::ClearConnectInformation(ConnectID cnt) {
+  TrunkLink::ClearConnectInformation(cnt);
+
+  std::lock_guard lk(connect_cache_lock_);
+  auto tail = std::remove_if(connect_cache_.begin(), connect_cache_.end(),
+      [cnt](const PacketConnectCache& item) { return item.info.CtxID == cnt; });
+  connect_cache_.erase(tail, connect_cache_.end());
 }
 
 
