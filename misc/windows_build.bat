@@ -1,5 +1,5 @@
 # Compilation
-pushd ..
+pushd ..\byte_stacker_in
 
 rd /S /Q build-win-release
 cmake -D CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -B build-win-release

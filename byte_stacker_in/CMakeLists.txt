@@ -2,6 +2,8 @@
 # project specific logic here.
 #
 
+cmake_minimum_required (VERSION 3.25)
+
 project (byte_stacker_in LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
