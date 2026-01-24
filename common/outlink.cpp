@@ -84,18 +84,23 @@ void OutLink::RequestConnect() {
 
   // TRACE
   auto ep = resolved_points_.front();
-  std::printf(
-      "-- Try connect to %s:%u\n", ep.address().to_string().c_str(), ep.port());
+  std::printf("TRACE: -- Try connect to %s:%u\n",
+      ep.address().to_string().c_str(), ep.port());
+  std::cout.flush();
 
   socket_.async_connect(
       resolved_points_.front(), [this](const boost::system::error_code& error) {
         if (error) {
+          std::printf(
+              "ERROR: -- Connecting error: %s\n", error.message().c_str());
+          std::cout.flush();
           // Неподключились. Текущую точку удаляем, берём следующую
           resolved_points_.pop_front();
           RequestConnect();
         } else {
           // TRACE
           std::printf("-- Connected\n");
+          std::cout.flush();
 
           RequestRead();
           assert(network_write_operation_.test());
@@ -161,7 +166,16 @@ void OutLink::RequestWrite() {
 }
 
 
-OutLink::~OutLink() { socket_.close(); }
+OutLink::~OutLink() {
+  std::printf(
+      "TRACE: -- Closing outlink %s\n", uuids::to_string(selfid_).c_str());
+  std::cout.flush();
+
+  socket_.close();
+
+  std::printf("TRACE: -- Closing outlink: Socket closed\n");
+  std::cout.flush();
+}
 
 void OutLink::Run(TrunkLink* hoster, ConnectID cnt) {
   assert(hoster);

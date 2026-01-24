@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 
 
-class TcpForwardingTest: public ::testing::Test {
+class DirectPipe: public ::testing::Test {
  protected:
   boost::asio::io_context io_ctx_;
 

@@ -146,10 +146,6 @@ class TrunkLink {
   \param cnt идентификатор коннекта */
   void SendDisconnectInformation(ConnectID cnt);
 
-  /*! Очистить всю информацию о соединении (перед удалением): пакеты, кэши и
-  т.д. \param cnt идентификатор коннекта */
-  virtual void ClearConnectInformation(ConnectID cnt);
-
  private:
   TrunkLink() = delete;
   TrunkLink(const TrunkLink&) = delete;

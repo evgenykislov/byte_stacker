@@ -27,11 +27,23 @@ using namespace std::chrono_literals;
 
 namespace {
 
-/**
- * @test TcpConnectionForwarding
- * @brief Основной тест переадресации TCP соединений
- */
-TEST_F(TcpForwardingTest, ConnectionClosePropagation) {
+
+void ReadData(std::shared_ptr<ip::tcp::socket> socket, char* buffer,
+    size_t buffer_size, std::promise<size_t>* result_size, size_t counter = 0) {
+  async_read(*socket,
+      boost::asio::buffer(buffer + counter, buffer_size - counter),
+      [&, buffer, buffer_size, socket, result_size, counter](
+          const boost::system::error_code& read_error, std::size_t data_size) {
+        auto nc = counter + data_size;
+        if (read_error || nc == buffer_size) {
+          result_size->set_value(nc);
+        } else {
+          ReadData(socket, buffer, buffer_size, result_size, nc);
+        }
+      });
+}
+
+TEST_F(DirectPipe, SingleByteTransfer) {
   // Настройка адресов для теста
   // В реальном сценарии эти адреса должны быть сконфигурированы
   // для конкретного прокси/моста, который тестируется
@@ -72,6 +84,10 @@ TEST_F(TcpForwardingTest, ConnectionClosePropagation) {
 
   // Создаем socket для принятия соединения
   auto accepted_socket = std::make_shared<ip::tcp::socket>(io_ctx_);
+  auto out_buffer = std::make_shared<std::array<char, 100>>();
+
+  std::promise<size_t> received_size;
+  auto f_received_size = received_size.get_future();
 
   // Асинхронное принятие соединения
   acceptor.async_accept(
@@ -80,20 +96,8 @@ TEST_F(TcpForwardingTest, ConnectionClosePropagation) {
           server_accepted = true;
           accept_promise.set_value();
 
-          // Запускаем асинхронное чтение для обнаружения разрыва соединения
-          auto buffer = std::make_shared<std::array<char, 1>>();
-          async_read(*accepted_socket, boost::asio::buffer(*buffer),
-              [&, buffer, accepted_socket](
-                  const boost::system::error_code& read_error, std::size_t) {
-                // EOF или ошибка означает разрыв соединения
-                if (read_error) {
-                  server_disconnected = true;
-                  disconnect_promise.set_value();
-                }
-              });
-        } else {
-          accept_promise.set_exception(std::make_exception_ptr(
-              std::runtime_error("Accept failed: " + error.message())));
+          ReadData(accepted_socket, out_buffer->data(), out_buffer->size(),
+              &received_size);
         }
       });
 
@@ -102,56 +106,29 @@ TEST_F(TcpForwardingTest, ConnectionClosePropagation) {
   ip::tcp::endpoint client_endpoint(
       ip::address::from_string(address_from_host), address_from_port);
 
-  std::promise<void> connect_promise;
-  auto connect_future = connect_promise.get_future();
+
+  uint8_t target_data =
+      0xaa;  //!< Некоторое тестовое значение. Можно выбрать любое
 
   client_socket.async_connect(
       client_endpoint, [&](const boost::system::error_code& error) {
-        if (error) {
-          connect_promise.set_exception(
-              std::make_exception_ptr(std::runtime_error(
-                  "Connect to address_from failed: " + error.message())));
-        } else {
-          connect_promise.set_value();
+        if (!error) {
+          client_socket.async_write_some(boost::asio::buffer(&target_data, 1),
+              [&](boost::system::error_code const& error,
+                  std::size_t bytes_transferred) {
+                if (!error) {
+                  client_socket.close();
+                }
+              });
         }
       });
 
-  // Ожидаем подключения к address_from
-  auto connect_status = connect_future.wait_for(2s);
-  ASSERT_EQ(connect_status, std::future_status::ready)
-      << "Failed to connect to address_from (" << address_from_host << ":"
-      << address_from_port << ") within 2 seconds";
-
-  ASSERT_NO_THROW(connect_future.get()) << "Connection to address_from failed";
-
-  // Шаг 3: Ожидаем подключения к address_to (переадресация прокси)
-  auto accept_status = accept_future.wait_for(2s);
-  ASSERT_EQ(accept_status, std::future_status::ready)
-      << "No incoming connection to address_to (" << address_to_host << ":"
-      << address_to_port << ") within 2 seconds. "
-      << "Check if proxy/bridge is running and configured correctly.";
-
-  ASSERT_NO_THROW(accept_future.get())
-      << "Failed to accept connection on address_to";
-
-  ASSERT_TRUE(server_accepted)
-      << "Server did not accept connection on address_to";
-
-  // Шаг 4: Разрываем клиентское соединение с address_from
-  client_socket.close(ec);
-  ASSERT_FALSE(ec) << "Failed to close client connection: " << ec.message();
-
-  // Шаг 5: Проверяем, что соединение на address_to тоже разорвалось
-  auto disconnect_status = disconnect_future.wait_for(1s);
-  ASSERT_EQ(disconnect_status, std::future_status::ready)
-      << "Connection on address_to was not closed within 1 second "
-      << "after closing connection to address_from. "
-      << "Proxy/bridge did not propagate connection closure.";
-
-  ASSERT_NO_THROW(disconnect_future.get());
-
-  ASSERT_TRUE(server_disconnected)
-      << "Server connection was not closed after client disconnected";
+  auto received_status = f_received_size.wait_for(2s);
+  ASSERT_EQ(received_status, std::future_status::ready)
+      << "Failed to receive data in timeout";
+  auto received_value = f_received_size.get();
+  ASSERT_EQ(received_value, 1) << "Wrong size of received value";
+  ASSERT_EQ((*out_buffer)[0], target_data) << "Slop transferring";
 
   // Очистка
   accepted_socket->close(ec);
