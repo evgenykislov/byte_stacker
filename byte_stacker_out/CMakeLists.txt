@@ -18,7 +18,11 @@ set(HEADER_FILES
   "../common/trunklink.h"
 )
 
+find_package(Threads REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system)
+
 add_executable (${PROJECT_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 
 include_directories(${PROJECT_NAME} "../common")
 
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system)

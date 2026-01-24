@@ -64,8 +64,8 @@ void TrunkLink::ClearDataCache(ConnectID cnt) {
 
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
-  //  std::printf(
-  //      "TRACE: Send %u bytes of data into trunk\n", (unsigned int)data_size);
+    std::printf(
+        "TRACE: -- Send %u bytes of data into trunk. Connect %s\n", (unsigned int)data_size, uuids::to_string(cnt).c_str());
 
   if (data_size > kMaxChunkSize) {
     assert(false);
@@ -222,8 +222,8 @@ void TrunkLink::ProcessTrunkData(
 
 void TrunkLink::ProcessDataToOutlink(
     uuids::uuid cnt, const PacketData* info, const void* data) {
-  //  std::printf("TRACE: -- Got %u bytes from trunk for connect %s\n",
-  //      (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
+    std::printf("TRACE: -- Got %u bytes from trunk for connect %s\n",
+        (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
   auto link = GetOutLink(cnt);
   if (!link) {
     // Нет такого подключения
