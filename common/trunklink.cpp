@@ -213,6 +213,10 @@ void TrunkLink::ProcessTrunkData(
         ProcessAckData(cnt, pa);
       }
       break;
+    case kTrunkCommandReleaseConnect:
+      ClearConnectInformation(cnt);
+      RemoveOutLink(cnt);
+      break;
   }
 }
 
@@ -284,9 +288,14 @@ void TrunkLink::OnCacheResend() {
 }
 
 void TrunkLink::RemoveOutLink(uuids::uuid cnt) {
+  std::printf("TRACE: -- Remove outlink %s\n", uuids::to_string(cnt).c_str());
   std::lock_guard lk(out_links_lock_);
   auto tail = std::remove_if(out_links_.begin(), out_links_.end(),
       [cnt](OutLinkInfo info) { return cnt == info.connect_id; });
+
+  // TODO Закрыть outlink без раздачи событий в обратку
+  // TODO Реализовать !!!
+
   out_links_.erase(tail, out_links_.end());
 }
 
