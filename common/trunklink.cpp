@@ -41,6 +41,7 @@ void TrunkLink::RequestCacheResend() {
   cache_timer_.async_wait([this](const boost::system::error_code& err) {
     // TODO Error checking
 
+
     OnCacheResend();
 
     RequestCacheResend();
@@ -69,12 +70,14 @@ void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
 
   if (data_size > kMaxChunkSize) {
     assert(false);
+    std::printf("ERROR: over max chunk size\n");
     return;
   }
 
   auto pkt_index = GetNextPacketIndex(cnt);
   if (pkt_index == kBadPacketIndex) {
     // TODO ERROR
+    std::printf("ERROR: bad packet\n");
     return;
   }
 
@@ -222,8 +225,8 @@ void TrunkLink::ProcessTrunkData(
 
 void TrunkLink::ProcessDataToOutlink(
     uuids::uuid cnt, const PacketData* info, const void* data) {
-    std::printf("TRACE: -- Got %u bytes from trunk for connect %s\n",
-        (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
+//    std::printf("TRACE: -- Got %u bytes from trunk for connect %s\n",
+//        (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
   auto link = GetOutLink(cnt);
   if (!link) {
     // Нет такого подключения
@@ -284,7 +287,31 @@ std::shared_ptr<TrunkLink::PacketBuffer> TrunkLink::GetBuffer() {
 }
 
 void TrunkLink::OnCacheResend() {
-  // TODO IMPLEMENT
+  std::lock_guard lk(packet_data_cache_lock_);
+  auto curt = std::chrono::steady_clock::now();
+
+  auto tail =
+      std::remove_if(packet_data_cache_.begin(), packet_data_cache_.end(),
+          [curt](PacketDataCache& item) { return curt > item.Deadline; });
+  if (tail != packet_data_cache_.end()) {
+    std::printf("TRACE: -- Removing %u deadline packets\n", packet_data_cache_.end() - tail);
+    packet_data_cache_.erase(tail, packet_data_cache_.end());
+  }
+
+  size_t resending = 0;
+  for (auto it = packet_data_cache_.begin(); it != packet_data_cache_.end(); ++it) {
+    if (curt > it->NextSend) {
+      // Перепосылаем пакет
+      it->NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+      ++resending;
+      SendPacket(it->info);
+    }
+
+  }
+
+  if (resending > 0) {
+    std::printf("TRACE: -- ReSend %u packets\n", resending);
+  }
 }
 
 void TrunkLink::RemoveOutLink(uuids::uuid cnt) {
