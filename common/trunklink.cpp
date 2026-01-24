@@ -378,8 +378,19 @@ void TrunkClient::SendConnectInformation(
 void TrunkClient::OnCacheResend() {
   TrunkLink::OnCacheResend();
 
-  auto curt = std::chrono::steady_clock::now();
   std::lock_guard<std::mutex> lk(connect_cache_lock_);
+  auto curt = std::chrono::steady_clock::now();
+
+  auto tail =
+      std::remove_if(connect_cache_.begin(), connect_cache_.end(),
+          [curt](PacketConnectCache& item) { return curt > item.Deadline; });
+  if (tail != connect_cache_.end()) {
+    std::printf("TRACE: -- Removing %u deadline connects\n",
+        connect_cache_.end() - tail);
+    connect_cache_.erase(tail, connect_cache_.end());
+  }
+
+
   for (auto& item : connect_cache_) {
     // TODO process deadline ????
 
