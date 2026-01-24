@@ -55,8 +55,10 @@ void OutLink::RequestRead() {
         //        std::printf("TRACE: -- Read some from outlink socket\n");
         // Вне зависимости от ошибок чтения, если есть вычитанные данные - их
         // обрабатываем
-        assert(hoster_);
-        hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
+        if (bytes_transferred > 0) {
+          assert(hoster_);
+          hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
+        }
 
         if (err) {
           // Ошибка чтения. Обычные ситуации:
