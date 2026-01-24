@@ -53,14 +53,22 @@ void OutLink::RequestRead() {
       [this](
           const boost::system::error_code& err, std::size_t bytes_transferred) {
         //        std::printf("TRACE: -- Read some from outlink socket\n");
-        // TODO Error processing
-        if (err) {
-          // TODO ошибка чтения
-          return;
-        }
-
+        // Вне зависимости от ошибок чтения, если есть вычитанные данные - их
+        // обрабатываем
         assert(hoster_);
         hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
+
+        if (err) {
+          // Ошибка чтения. Обычные ситуации:
+          // - закрыто соединение (boost::asio::error::eof)
+          // - операция прервана. например, закрывается сам сокет
+          // (boost::asio::error::operation_aborted)
+          // - другие тоже бывают (ресурсы отобрали и т.д.)
+          // std::printf("TRACE: -- Read error of outlink: %s\n",
+          // err.message().c_str());
+          hoster_->CloseConnect(selfid_);
+          return;
+        }
 
         RequestRead();
       });

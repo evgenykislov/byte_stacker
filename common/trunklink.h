@@ -66,6 +66,11 @@ class TrunkLink {
   // TODO Descr
   void SendData(ConnectID cnt, const void* data, size_t data_size);
 
+  /*! Закрыть коннект по сигналу "снаружи": соединение разорвано и т.п.
+  Коннект уже может быть закрыт (дубликат события)
+  \param cnt идентификатор коннекта */
+  void CloseConnect(ConnectID cnt);
+
 
  protected:
   static const uint32_t kEmptyPacketID = static_cast<uint32_t>(-1);
@@ -100,6 +105,7 @@ class TrunkLink {
   PacketInfo FormPacket(
       const PacketData& header, uint8_t* data, size_t data_size);
 
+  // TODO Descr
   virtual void SendPacket(PacketInfo pkt) = 0;
 
   // Обработчики отдельных команд
@@ -136,6 +142,14 @@ class TrunkLink {
   // TODO Descr
   void RemoveOutLink(uuids::uuid cnt);
 
+  /*! Послать по транку информацию о разрыве соединения
+  \param cnt идентификатор коннекта */
+  void SendDisconnectInformation(ConnectID cnt);
+
+  /*! Очистить всю информацию о соединении (перед удалением): пакеты, кэши и
+  т.д. \param cnt идентификатор коннекта */
+  virtual void ClearConnectInformation(ConnectID cnt);
+
  private:
   TrunkLink() = delete;
   TrunkLink(const TrunkLink&) = delete;
@@ -171,6 +185,11 @@ class TrunkLink {
 
   // TODO descr
   void SendLivePacket();
+
+
+  /*! Очистить кэш для соединения cnt
+  \param cnt идентификатор коннекта */
+  void ClearDataCache(ConnectID cnt);
 };
 
 
@@ -226,6 +245,8 @@ class TrunkClient: public TrunkLink {
   void OnCacheResend() override;
 
   void ReceiveTrunkData();
+
+  void ClearConnectInformation(ConnectID cnt) override;
 
 
   // Asio Requesters
