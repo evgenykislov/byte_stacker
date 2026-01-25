@@ -139,8 +139,6 @@ class TrunkLink {
   // TODO Descr
   virtual void OnCacheResend();
 
-  // TODO Descr
-  void RemoveOutLink(uuids::uuid cnt);
 
   /*! Послать по транку информацию о разрыве соединения
   \param cnt идентификатор коннекта */
@@ -163,29 +161,24 @@ class TrunkLink {
   };
 
 
-  static const size_t kResendTick = 100;
+  static const size_t kUpdateTick = 100;
 
   bool server_side_;
 
   std::vector<PacketDataCache> packet_data_cache_;
   std::mutex packet_data_cache_lock_;
-  boost::asio::steady_timer cache_timer_;
+  boost::asio::steady_timer update_timer_;
 
 
   // TODO Descr + kBadPacketIndex
   uint32_t GetNextPacketIndex(ConnectID cnt);
 
   /*! Запросить переотправку кэша */
-  void RequestCacheResend();
+  void RequestUpdate();
 
 
   // TODO descr
   void SendLivePacket();
-
-
-  /*! Очистить кэш для соединения cnt
-  \param cnt идентификатор коннекта */
-  void ClearDataCache(ConnectID cnt);
 };
 
 
@@ -241,8 +234,6 @@ class TrunkClient: public TrunkLink {
   void OnCacheResend() override;
 
   void ReceiveTrunkData();
-
-  void ClearConnectInformation(ConnectID cnt) override;
 
 
   // Asio Requesters
