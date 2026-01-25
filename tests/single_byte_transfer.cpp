@@ -126,9 +126,10 @@ TEST_F(DirectPipe, SingleByteTransfer) {
   auto received_status = f_received_size.wait_for(2s);
   ASSERT_EQ(received_status, std::future_status::ready)
       << "Failed to receive data in timeout";
-  auto received_value = f_received_size.get();
-  ASSERT_EQ(received_value, 1) << "Wrong size of received value";
-  ASSERT_EQ((*out_buffer)[0], target_data) << "Slop transferring";
+  auto received_value_size = f_received_size.get();
+  ASSERT_EQ(received_value_size, 1) << "Wrong size of received value";
+  uint8_t received_value = (*out_buffer)[0];
+  ASSERT_EQ(received_value, target_data) << "Slop transferring";
 
   // Очистка
   accepted_socket->close(ec);
