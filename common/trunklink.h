@@ -26,7 +26,7 @@ enum TrunkCommand : uint32_t {
 
 const size_t kConnectIDSize = 16;
 const unsigned int kResendTimeout = 300;
-const unsigned int kDeadlineTimeout = 5000;
+const unsigned int kDeadlineTimeout = 2000;
 
 const size_t kMaxChunkSize = 800;
 
@@ -62,6 +62,10 @@ class TrunkLink {
   TrunkLink(boost::asio::io_context& ctx, bool server_side);
 
   virtual ~TrunkLink() {}
+
+  // TODO Descr
+  void SendCmdData(
+      ConnectID cnt, const void* data, size_t data_size, TrunkCommand cmd);
 
   // TODO Descr
   void SendData(ConnectID cnt, const void* data, size_t data_size);
@@ -120,6 +124,9 @@ class TrunkLink {
   // TODO Descr
   void ProcessAckData(uuids::uuid cnt, const PacketAck* info);
 
+  // TODO Descr
+  void ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id);
+
 
   /*! Внутренняя функция: добавляет внешнюю связь для заданного коннекта.
   Функцию необходимо вызывать с захваченной блокировкой out_links_lock_.
@@ -139,16 +146,10 @@ class TrunkLink {
   // TODO Descr
   virtual void OnCacheResend();
 
-  // TODO Descr
-  void RemoveOutLink(uuids::uuid cnt);
 
   /*! Послать по транку информацию о разрыве соединения
   \param cnt идентификатор коннекта */
   void SendDisconnectInformation(ConnectID cnt);
-
-  /*! Очистить всю информацию о соединении (перед удалением): пакеты, кэши и
-  т.д. \param cnt идентификатор коннекта */
-  virtual void ClearConnectInformation(ConnectID cnt);
 
  private:
   TrunkLink() = delete;
@@ -167,29 +168,29 @@ class TrunkLink {
   };
 
 
-  static const size_t kResendTick = 100;
+  static const size_t kUpdateTick = 100;
 
   bool server_side_;
 
   std::vector<PacketDataCache> packet_data_cache_;
   std::mutex packet_data_cache_lock_;
-  boost::asio::steady_timer cache_timer_;
+  boost::asio::steady_timer update_timer_;
 
 
   // TODO Descr + kBadPacketIndex
   uint32_t GetNextPacketIndex(ConnectID cnt);
 
   /*! Запросить переотправку кэша */
-  void RequestCacheResend();
+  void RequestUpdate();
 
 
   // TODO descr
   void SendLivePacket();
 
-
-  /*! Очистить кэш для соединения cnt
+  /*! Удаляем коннект из списка коннектов. Предполагается, что коннект уже
+  остановил все операции и готов к удалению
   \param cnt идентификатор коннекта */
-  void ClearDataCache(ConnectID cnt);
+  void RemoveOutLink(uuids::uuid cnt);
 };
 
 
@@ -245,8 +246,6 @@ class TrunkClient: public TrunkLink {
   void OnCacheResend() override;
 
   void ReceiveTrunkData();
-
-  void ClearConnectInformation(ConnectID cnt) override;
 
 
   // Asio Requesters

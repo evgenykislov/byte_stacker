@@ -11,6 +11,7 @@ set(SOURCES_FILES
   "close_connect.cpp"
   "fixture_direct_pipe.cpp"
   "set_connect.cpp"
+  "single_byte_transfer.cpp"
 )
 
 set(HEADERS_FILES

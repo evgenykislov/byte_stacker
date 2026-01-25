@@ -55,7 +55,7 @@ namespace {
  * @test TcpConnectionForwarding
  * @brief Основной тест переадресации TCP соединений
  */
-TEST_F(TcpForwardingTest, ConnectionClosePropagation) {
+TEST_F(DirectPipe, ConnectionClosePropagation) {
   // Настройка адресов для теста
   // В реальном сценарии эти адреса должны быть сконфигурированы
   // для конкретного прокси/моста, который тестируется

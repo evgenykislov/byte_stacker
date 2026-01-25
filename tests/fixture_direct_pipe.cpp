@@ -1,7 +1,7 @@
 #include "fixture_direct_pipe.h"
 
 
-void TcpForwardingTest::SetUp() {
+void DirectPipe::SetUp() {
   // Инициализация (процессы запускаются в самом тесте)
   // Параметры для запуска приложений
   // ВАЖНО: Замените на реальные пути и параметры ваших приложений
@@ -33,7 +33,7 @@ void TcpForwardingTest::SetUp() {
 }
 
 
-void TcpForwardingTest::TearDown() {
+void DirectPipe::TearDown() {
   // Останавливаем io_context
   work_.reset();
   io_ctx_.stop();
@@ -49,7 +49,7 @@ void TcpForwardingTest::TearDown() {
 }
 
 
-bool TcpForwardingTest::StartApplication(
+bool DirectPipe::StartApplication(
     std::unique_ptr<boost::process::child>& process,
     const std::string& executable, const std::vector<std::string>& args) {
   try {
@@ -68,8 +68,7 @@ bool TcpForwardingTest::StartApplication(
 }
 
 
-void TcpForwardingTest::StopProcess(
-    std::unique_ptr<boost::process::child>& proc) {
+void DirectPipe::StopProcess(std::unique_ptr<boost::process::child>& proc) {
   if (!proc || !proc->valid()) {
     return;
   }
