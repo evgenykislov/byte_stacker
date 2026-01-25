@@ -64,6 +64,10 @@ class TrunkLink {
   virtual ~TrunkLink() {}
 
   // TODO Descr
+  void SendCmdData(
+      ConnectID cnt, const void* data, size_t data_size, TrunkCommand cmd);
+
+  // TODO Descr
   void SendData(ConnectID cnt, const void* data, size_t data_size);
 
   /*! Закрыть коннект по сигналу "снаружи": соединение разорвано и т.п.
@@ -119,6 +123,9 @@ class TrunkLink {
 
   // TODO Descr
   void ProcessAckData(uuids::uuid cnt, const PacketAck* info);
+
+  // TODO Descr
+  void ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id);
 
 
   /*! Внутренняя функция: добавляет внешнюю связь для заданного коннекта.
@@ -179,6 +186,11 @@ class TrunkLink {
 
   // TODO descr
   void SendLivePacket();
+
+  /*! Удаляем коннект из списка коннектов. Предполагается, что коннект уже
+  остановил все операции и готов к удалению
+  \param cnt идентификатор коннекта */
+  void RemoveOutLink(uuids::uuid cnt);
 };
 
 
