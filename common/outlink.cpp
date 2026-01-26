@@ -11,12 +11,13 @@ OutLink::OutLink(boost::asio::ip::tcp::socket&& socket)
       hoster_(nullptr),
       read_processing_(false),
       write_processing_(false),
-      close_invoked_(false),
       stop_write_chunk_id_(kUndefinedChunkID),
       stop_after_all_write_(false),
       stop_write_immediate_(false),
       next_write_chunk_id_{0},
-      write_idle_timer_(socket_.get_executor()) {}
+      write_idle_timer_(socket_.get_executor()) {
+  close_invoked_.clear();
+}
 
 
 void OutLink::FillNetworkBuffer() {
@@ -72,12 +73,13 @@ OutLink::OutLink(
       hoster_(nullptr),
       read_processing_(false),
       write_processing_(false),
-      close_invoked_(false),
       stop_write_chunk_id_(kUndefinedChunkID),
       stop_after_all_write_(false),
       stop_write_immediate_(false),
       next_write_chunk_id_{0},
-      write_idle_timer_(ctx) {}
+      write_idle_timer_(ctx) {
+  close_invoked_.clear();
+}
 
 
 void OutLink::RequestRead() {
