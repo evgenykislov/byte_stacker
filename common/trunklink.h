@@ -52,6 +52,14 @@ struct PacketAck: PacketHeader {
   uint32_t PacketIndex;
 };
 
+
+struct StatInfo {
+  size_t StreamToOutLinks; //!< Поток данных наружу через внешние соединения,
+                           // байт с момента последнего запроса
+  size_t StreamFromOutLinks;  //!< Поток данных в транс из внешних соединений,
+                              // байт с момента последнего запроса
+};
+
 class OutLink;
 
 
@@ -151,6 +159,9 @@ class TrunkLink {
   \param cnt идентификатор коннекта */
   void SendDisconnectInformation(ConnectID cnt);
 
+  /*! Получить статистику по работе приложения */
+  StatInfo GetStat();
+
  private:
   TrunkLink() = delete;
   TrunkLink(const TrunkLink&) = delete;
@@ -175,6 +186,9 @@ class TrunkLink {
   std::vector<PacketDataCache> packet_data_cache_;
   std::mutex packet_data_cache_lock_;
   boost::asio::steady_timer update_timer_;
+
+  std::atomic_size_t out_stream_counter_;
+  std::atomic_size_t in_stream_counter_;
 
 
   // TODO Descr + kBadPacketIndex
@@ -266,6 +280,9 @@ class TrunkServer: public TrunkLink {
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
       std::function<std::shared_ptr<OutLink>(PointID)> link_fabric);
   virtual ~TrunkServer();
+
+  /*! Получить статистику по работе приложения */
+  StatInfo GetStat() { return TrunkLink::GetStat(); }
 
  private:
   TrunkServer() = delete;

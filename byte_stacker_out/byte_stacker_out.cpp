@@ -108,6 +108,10 @@ int main(int argc, char** argv) {
     // Вывод полезной информации
     while (!stop_flag) {
       std::this_thread::sleep_for(std::chrono::milliseconds(kInformationInterval));
+
+      auto stat = trs.GetStat();
+      std::printf("-----\nOut: %u kByte, In: %u kByte\n", (unsigned int)(stat.StreamToOutLinks / 1024),
+        (unsigned int)(stat.StreamFromOutLinks / 1024));
     }
 
     // Остановим все потоки
