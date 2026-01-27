@@ -169,11 +169,13 @@ void OutLink::RequestWrite() {
     }
 
     // Пока нечего передавать - включаем ожидание
-    trlog("-- Nothing write. Use idle timeout\n");
+//    trlog("-- Nothing write. Use idle timeout\n");
     std::chrono::milliseconds intrv{kWriteIdleTimeout};
     write_idle_timer_.expires_after(intrv);
     write_idle_timer_.async_wait([this](const boost::system::error_code& err) {
-      trlog("-- Write idle timeout ... finished\n");
+      if (!err) {
+        trlog("-- Write idles for timeout. Connect %s\n", uuids::to_string(selfid_).c_str());
+      }
       RequestWrite();
     });
     return;
