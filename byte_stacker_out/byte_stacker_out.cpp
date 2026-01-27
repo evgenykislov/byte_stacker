@@ -110,8 +110,8 @@ int main(int argc, char** argv) {
       std::this_thread::sleep_for(std::chrono::milliseconds(kInformationInterval));
 
       auto stat = trs.GetStat();
-      std::printf("-----\nOut: %u kByte, In: %u kByte\n", (unsigned int)(stat.StreamToOutLinks / 1024),
-        (unsigned int)(stat.StreamFromOutLinks / 1024));
+      std::printf("-----\nOut: %u kByte, In: %u kByte, Cnt: %zu\n", (unsigned int)(stat.StreamToOutLinks / 1024),
+        (unsigned int)(stat.StreamFromOutLinks / 1024), stat.ConnectAmount);
     }
 
     // Остановим все потоки

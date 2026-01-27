@@ -136,6 +136,11 @@ StatInfo TrunkLink::GetStat() {
 
   res.StreamToOutLinks = out_stream_counter_.exchange(0);
   res.StreamFromOutLinks = in_stream_counter_.exchange(0);
+
+  std::unique_lock lk(out_links_lock_);
+  res.ConnectAmount = out_links_.size();
+  lk.unlock();
+
   return res;
 }
 
