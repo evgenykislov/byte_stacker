@@ -17,9 +17,9 @@ void CopyConnectID(uint8_t dest[16], const uuids::uuid& src) {
 
 TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side)
     : server_side_(server_side),
-      update_timer_(ctx)
-
-{
+      update_timer_(ctx),
+      out_stream_counter_(0),
+      in_stream_counter_(0) {
   RequestUpdate();
 }
 
@@ -63,6 +63,7 @@ void TrunkLink::SendLivePacket() {
 
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
+  in_stream_counter_ += data_size;
   SendCmdData(cnt, data, data_size,
       server_side_ ? kTrunkCommandDataIn : kTrunkCommandDataOut);
 }
@@ -129,6 +130,14 @@ void TrunkLink::SendDisconnectInformation(ConnectID cnt) {
       uuids::to_string(cnt).c_str());
 }
 
+
+StatInfo TrunkLink::GetStat() {
+  StatInfo res;
+
+  res.StreamToOutLinks = out_stream_counter_.exchange(0);
+  res.StreamFromOutLinks = in_stream_counter_.exchange(0);
+  return res;
+}
 
 void TrunkLink::ProcessTrunkData(
     boost::asio::ip::udp::endpoint client, const void* data, size_t data_size) {
@@ -248,6 +257,7 @@ void TrunkLink::ProcessDataToOutlink(
   SendPacket(pi);
 
   // Выдадим данные на внешний линк
+  out_stream_counter_ += info->DataSize;
   link->SendData(info->PacketIndex, data, info->DataSize);
 }
 
