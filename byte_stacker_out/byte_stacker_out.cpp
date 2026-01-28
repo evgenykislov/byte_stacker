@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
           }
 
           try {
-            return std::make_shared<OutLink>(
+            return OutLink::CreateOutLink(
                 ctx, it->second.Address, it->second.Port);
           } catch (...) {
           }
@@ -99,19 +99,19 @@ int main(int argc, char** argv) {
     // Запустим потоки обработки сети
     std::vector<std::thread> pool;
     for (size_t i = 0; i < kPoolSize; ++i) {
-      std::thread t([&ctx](){
-        ctx.run();
-      });
+      std::thread t([&ctx]() { ctx.run(); });
       pool.push_back(std::move(t));
     }
 
     // Вывод полезной информации
     while (!stop_flag) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(kInformationInterval));
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(kInformationInterval));
 
       auto stat = trs.GetStat();
-      std::printf("-----\nOut: %u kByte, In: %u kByte, Cnt: %zu\n", (unsigned int)(stat.StreamToOutLinks / 1024),
-        (unsigned int)(stat.StreamFromOutLinks / 1024), stat.ConnectAmount);
+      std::printf("-----\nOut: %u kByte, In: %u kByte, Cnt: %zu\n",
+          (unsigned int)(stat.StreamToOutLinks / 1024),
+          (unsigned int)(stat.StreamFromOutLinks / 1024), stat.ConnectAmount);
     }
 
     // Остановим все потоки
