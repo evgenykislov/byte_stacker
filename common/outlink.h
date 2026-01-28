@@ -40,8 +40,6 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
       boost::asio::io_context& ctx, std::string address, uint16_t port);
 
 
-  OutLink(OutLink&& arg) = default;
-  OutLink& operator=(OutLink&& arg) = default;
   virtual ~OutLink();
 
   /*! Запуск подключения в работу. Функция неблокирующая
@@ -63,6 +61,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   OutLink() = delete;
   OutLink(const OutLink&) = delete;
   OutLink& operator=(const OutLink&) = delete;
+  OutLink(OutLink&& arg) = delete;
+  OutLink& operator=(OutLink&& arg) = delete;
 
   // Приватные конструкторы, используются через соответствующую Create...
   // функцию
@@ -153,20 +153,34 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   функция сразу завершает работу. Для каждого экземпляра подключения функция
   должна вызываться "однопоточно" */
   void RequestRead();
+  /*! Парная функция обработки для RequestRead */
+  void RequestReadProcessing(
+      const boost::system::error_code& err, std::size_t bytes_transferred);
 
   /*! Функция запроса подключения к первой точке в списке от резолвинга. В
   случае неудачи эта "первая точка" удаляется из списка и делается опять вызов
   этой же функции */
   void RequestConnect();
+  /*! Парная функция обработки для RequestConnect */
+  void RequestConnectProcessing(const boost::system::error_code& err);
 
 
   /*! Функция запроса операций на запись в сокет. Функция вызывается
   "однопоточно": с первого запуска она вызывает сама себя */
   void RequestWrite();
+  /*! Парная функция обработки для RequestWrite */
+  void RequestWriteProcessing(
+      const boost::system::error_code& err, std::size_t bytes_transferred);
 
   /*! Функция проверки на остановку операций чтения/записи. Если всё
   остановлено, то вызывается закрытие соединения у хостера */
   void CheckReadyClose();
+  /*! Парная функция обработки для CheckReadyClose */
+  void CheckReadyCloseProcessing();
+
+  /*! Функция для обработки результатов резолвинга адресов */
+  void ResolverProcessing(const boost::system::error_code& err,
+      boost::asio::ip::tcp::resolver::results_type results);
 };
 
 
