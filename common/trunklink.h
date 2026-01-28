@@ -103,6 +103,7 @@ class TrunkLink {
     uuids::uuid connect_id;
     std::shared_ptr<OutLink> link;
     uint32_t next_index_to_trunk;  //!< Индекс пакета для следующего пакета
+    std::chrono::steady_clock::time_point deadlink_timeout_; //!< Время, после которого соединение считается мёртвым
   };
 
 
@@ -136,6 +137,9 @@ class TrunkLink {
   // TODO Descr
   void ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id);
 
+  /*! Обработка пришедшего из транка live-пакета
+  \param cnt идентификатор соединения */
+  void ProcessLive(uuids::uuid cnt);
 
   /*! Внутренняя функция: добавляет внешнюю связь для заданного коннекта.
   Функцию необходимо вызывать с захваченной блокировкой out_links_lock_.
@@ -181,6 +185,8 @@ class TrunkLink {
 
 
   static const size_t kUpdateTick = 100;
+  static const size_t kLiveUpdateTick = 1000;
+  static const size_t kDeadLinkTimeout = 5000;
 
   bool server_side_;
 
@@ -191,9 +197,12 @@ class TrunkLink {
   std::atomic_size_t out_stream_counter_;
   std::atomic_size_t in_stream_counter_;
 
+  std::chrono::steady_clock::time_point next_live_update_;  //!< Время, когда следующий раз посылать live-пакеты
+
 
   // TODO Descr + kBadPacketIndex
   uint32_t GetNextPacketIndex(ConnectID cnt);
+
 
   /*! Запросить переотправку кэша */
   void RequestUpdate();

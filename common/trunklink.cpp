@@ -20,6 +20,8 @@ TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side)
       update_timer_(ctx),
       out_stream_counter_(0),
       in_stream_counter_(0) {
+  next_live_update_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(kLiveUpdateTick);
+
   RequestUpdate();
 }
 
@@ -46,6 +48,8 @@ void TrunkLink::RequestUpdate() {
       return;
     }
 
+    SendLivePacket();
+
     // TODO Remove stopped,completed outlinks
 
     OnCacheResend();
@@ -56,9 +60,34 @@ void TrunkLink::RequestUpdate() {
 
 
 void TrunkLink::SendLivePacket() {
-  // TODO Implemntation
+  auto curt = std::chrono::steady_clock::now();
+  if (curt < next_live_update_) {
+    return;
+  }
+  next_live_update_ = curt + std::chrono::milliseconds(kLiveUpdateTick);
 
-  // TODO call this every 1-3-5 minutes
+  // Рассылаем live-пакеты
+  std::lock_guard lk(out_links_lock_);
+  for (auto& item : out_links_) {
+    // Сначала удалим мёртвые соединения
+    if (item.deadlink_timeout_ > curt) {
+      trlog("-- Dead connect %s - removing\n", uuids::to_string(item.connect_id).c_str());
+      item.link->Stop(0);
+      continue;
+    }
+
+    assert(sizeof(PacketHeader) <= kPacketBufferSize);
+    auto buf = GetBuffer();
+    auto pkt = (PacketHeader*)(buf.get());
+    CopyConnectID(pkt->ConnectID, item.connect_id);
+    pkt->PacketCommand = kTrunkCommandLive;
+    PacketInfo pi;
+    pi.CtxID = item.connect_id;
+    pi.PacketID = kEmptyPacketID;
+    pi.PacketData = buf;
+    pi.PacketSize = sizeof(PacketHeader);
+    SendPacket(pi);
+  }
 }
 
 
@@ -232,6 +261,9 @@ void TrunkLink::ProcessTrunkData(
         ProcessReleaseConnect(cnt, pd->PacketIndex);
       }
       break;
+    case kTrunkCommandLive:
+      ProcessLive(cnt);
+      break;
   }
 }
 
@@ -285,6 +317,16 @@ void TrunkLink::ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id) {
   link->Stop(packet_id);
 }
 
+void TrunkLink::ProcessLive(uuids::uuid cnt) {
+  std::lock_guard lk(out_links_lock_);
+  for (auto& item : out_links_) {
+    if (item.connect_id == cnt) {
+      item.deadlink_timeout_ = std::chrono::steady_clock::now() +
+                      std::chrono::milliseconds(kDeadLinkTimeout);
+    }
+  }
+}
+
 
 void TrunkLink::IntAddOutLinkWOLock(
     uuids::uuid cnt, std::shared_ptr<OutLink> link) {
@@ -292,6 +334,9 @@ void TrunkLink::IntAddOutLinkWOLock(
   info.connect_id = cnt;
   info.link = link;
   info.next_index_to_trunk = 0;
+  info.deadlink_timeout_ =
+      std::chrono::steady_clock::now() +
+      std::chrono::milliseconds(kDeadLinkTimeout);
   out_links_.push_back(info);
 
   link->Run(this, cnt);
