@@ -69,10 +69,11 @@ void TrunkLink::SendLivePacket() {
   next_live_update_ = curt + intrv;
 
   // Рассылаем live-пакеты
+  trlog("LIVE-LIVE-LIVE\n");
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     // Сначала удалим мёртвые соединения
-    if (item.deadlink_timeout_ > curt) {
+    if (curt > item.deadlink_timeout_) {
       trlog("-- Dead connect %s - removing\n", uuids::to_string(item.connect_id).c_str());
       item.link->Stop(0);
       continue;
@@ -320,6 +321,7 @@ void TrunkLink::ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id) {
 }
 
 void TrunkLink::ProcessLive(uuids::uuid cnt) {
+  trlog(">>> Live %s\n", uuids::to_string(cnt).c_str());
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     if (item.connect_id == cnt) {
