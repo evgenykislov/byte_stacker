@@ -38,7 +38,7 @@ void RegisterConnect(TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
   assert(cnt.is_nil());
 
   try {
-    auto ol = std::make_shared<OutLink>(std::move(socket));
+    auto ol = OutLink::CreateOutLink(std::move(socket));
     trc.AddConnect(id, ol);
   } catch (std::exception&) {
     // Незарегистрировали. Просто выходим

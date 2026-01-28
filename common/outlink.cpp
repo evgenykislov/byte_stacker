@@ -5,6 +5,18 @@
 #include "trace.h"
 #include "trunklink.h"
 
+std::shared_ptr<OutLink> OutLink::CreateOutLink(
+    boost::asio::ip::tcp::socket&& socket) {
+  return std::shared_ptr<OutLink>(new OutLink(std::move(socket)));
+}
+
+
+std::shared_ptr<OutLink> OutLink::CreateOutLink(
+    boost::asio::io_context& ctx, std::string address, uint16_t port) {
+  return std::shared_ptr<OutLink>(new OutLink(ctx, address, port));
+}
+
+
 OutLink::OutLink(boost::asio::ip::tcp::socket&& socket)
     : socket_(std::move(socket)),
       resolver_(socket_.get_executor()),
@@ -169,12 +181,13 @@ void OutLink::RequestWrite() {
     }
 
     // Пока нечего передавать - включаем ожидание
-//    trlog("-- Nothing write. Use idle timeout\n");
+    //    trlog("-- Nothing write. Use idle timeout\n");
     std::chrono::milliseconds intrv{kWriteIdleTimeout};
     write_idle_timer_.expires_after(intrv);
     write_idle_timer_.async_wait([this](const boost::system::error_code& err) {
       if (!err) {
-        trlog("-- Write idles for timeout. Connect %s\n", uuids::to_string(selfid_).c_str());
+        trlog("-- Write idles for timeout. Connect %s\n",
+            uuids::to_string(selfid_).c_str());
       }
       RequestWrite();
     });

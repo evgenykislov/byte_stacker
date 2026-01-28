@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <list>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -29,21 +30,15 @@ class TrunkLink;
 - запускаем подключение/чтение на сокете: вызываем метод Run();
 - когда подключение завершает работу (по причинам отключений/ошибок или вызова
 Stop), то класс сам вызывает функцию CloseConnect хостера */
-class OutLink {
+class OutLink: public std::enable_shared_from_this<OutLink> {
  public:
-  /*! Конструктор экземпляра на основе сокета с установленным соединением
-  \param socket сокет с соединением */
-  OutLink(boost::asio::ip::tcp::socket&& socket);
+  // Функции конструирования экземпляров. Описание см. для соответствующих
+  // приватных конструкторов
+  static std::shared_ptr<OutLink> CreateOutLink(
+      boost::asio::ip::tcp::socket&& socket);
+  static std::shared_ptr<OutLink> CreateOutLink(
+      boost::asio::io_context& ctx, std::string address, uint16_t port);
 
-  /*! Конструктор экземпляра на основе адреса и порта (например mysite.com:80).
-  Подключение выполняется автоматически (и асинхронно) при вызове функции Run.
-  Если подключение неуспешно (нет адреса, сервера и т.д.), то вызывается явно
-  функция отключения для hoster-а.
-  \param ctx сетевой контекст бибилиотеки asio
-  \param address адрес для подключения. Может быть как явный ip-адрес, так и имя
-  сайта
-  \param port порт для подключения */
-  OutLink(boost::asio::io_context& ctx, std::string address, uint16_t port);
 
   OutLink(OutLink&& arg) = default;
   OutLink& operator=(OutLink&& arg) = default;
@@ -68,6 +63,24 @@ class OutLink {
   OutLink() = delete;
   OutLink(const OutLink&) = delete;
   OutLink& operator=(const OutLink&) = delete;
+
+  // Приватные конструкторы, используются через соответствующую Create...
+  // функцию
+
+  /*! Конструктор экземпляра на основе сокета с установленным соединением
+  \param socket сокет с соединением */
+  OutLink(boost::asio::ip::tcp::socket&& socket);
+
+  /*! Конструктор экземпляра на основе адреса и порта (например mysite.com:80).
+  Подключение выполняется автоматически (и асинхронно) при вызове функции Run.
+  Если подключение неуспешно (нет адреса, сервера и т.д.), то вызывается явно
+  функция отключения для hoster-а.
+  \param ctx сетевой контекст бибилиотеки asio
+  \param address адрес для подключения. Может быть как явный ip-адрес, так и имя
+  сайта
+  \param port порт для подключения */
+  OutLink(boost::asio::io_context& ctx, std::string address, uint16_t port);
+
 
   static const size_t kChunkSize = 800;
   static const size_t kMaxChunkAmount = 5000;
