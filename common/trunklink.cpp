@@ -20,7 +20,8 @@ TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side)
       update_timer_(ctx),
       out_stream_counter_(0),
       in_stream_counter_(0) {
-  next_live_update_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(kLiveUpdateTick);
+  std::chrono::milliseconds intrv{kLiveUpdateTick};
+  next_live_update_ = std::chrono::steady_clock::now() + intrv;
 
   RequestUpdate();
 }
@@ -64,7 +65,8 @@ void TrunkLink::SendLivePacket() {
   if (curt < next_live_update_) {
     return;
   }
-  next_live_update_ = curt + std::chrono::milliseconds(kLiveUpdateTick);
+  std::chrono::milliseconds intrv{kLiveUpdateTick};
+  next_live_update_ = curt + intrv;
 
   // Рассылаем live-пакеты
   std::lock_guard lk(out_links_lock_);
@@ -321,8 +323,8 @@ void TrunkLink::ProcessLive(uuids::uuid cnt) {
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     if (item.connect_id == cnt) {
-      item.deadlink_timeout_ = std::chrono::steady_clock::now() +
-                      std::chrono::milliseconds(kDeadLinkTimeout);
+      std::chrono::milliseconds intrv{kDeadLinkTimeout};
+      item.deadlink_timeout_ = std::chrono::steady_clock::now() + intrv;
     }
   }
 }
@@ -334,9 +336,8 @@ void TrunkLink::IntAddOutLinkWOLock(
   info.connect_id = cnt;
   info.link = link;
   info.next_index_to_trunk = 0;
-  info.deadlink_timeout_ =
-      std::chrono::steady_clock::now() +
-      std::chrono::milliseconds(kDeadLinkTimeout);
+  std::chrono::milliseconds intrv{kDeadLinkTimeout};
+  info.deadlink_timeout_ = std::chrono::steady_clock::now() + intrv;
   out_links_.push_back(info);
 
   link->Run(this, cnt);
