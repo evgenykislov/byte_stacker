@@ -239,8 +239,8 @@ void TrunkLink::ProcessTrunkData(
       break;
     case kTrunkCommandAckDataOut:
     case kTrunkCommandAckDataIn:
-      if (data_size < sizeof(PacketAck)) {
-        // Неполный формат
+      if (data_size != sizeof(PacketAck)) {
+        // Неправильный формат
         return;
       }
 
@@ -294,7 +294,7 @@ void TrunkLink::ProcessDataToOutlink(
   pi.CtxID = cnt;
   pi.PacketID = kEmptyPacketID;
   pi.PacketData = buf;
-  pi.PacketSize = sizeof(PacketHeader);
+  pi.PacketSize = sizeof(PacketAck);
   SendPacket(pi);
 
   // Выдадим данные на внешний линк
