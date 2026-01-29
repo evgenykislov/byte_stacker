@@ -54,11 +54,11 @@ struct PacketAck: PacketHeader {
 
 
 struct StatInfo {
-  size_t StreamToOutLinks; //!< Поток данных наружу через внешние соединения,
-                           // байт с момента последнего запроса
+  size_t StreamToOutLinks;  //!< Поток данных наружу через внешние соединения,
+                            // байт с момента последнего запроса
   size_t StreamFromOutLinks;  //!< Поток данных в транс из внешних соединений,
                               // байт с момента последнего запроса
-  size_t ConnectAmount; //! Текущее количество подключений
+  size_t ConnectAmount;  //! Текущее количество подключений
 };
 
 class OutLink;
@@ -103,7 +103,9 @@ class TrunkLink {
     uuids::uuid connect_id;
     std::shared_ptr<OutLink> link;
     uint32_t next_index_to_trunk;  //!< Индекс пакета для следующего пакета
-    std::chrono::steady_clock::time_point deadlink_timeout_; //!< Время, после которого соединение считается мёртвым
+    std::chrono::steady_clock::time_point
+        deadlink_timeout_;  //!< Время, после которого соединение считается
+                            //!< мёртвым
   };
 
 
@@ -132,7 +134,7 @@ class TrunkLink {
       uuids::uuid cnt, const PacketData* info, const void* data);
 
   // TODO Descr
-  void ProcessAckData(uuids::uuid cnt, const PacketAck* info);
+  void ProcessAckData(uuids::uuid cnt, uint32_t packet_index);
 
   // TODO Descr
   void ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id);
@@ -197,7 +199,8 @@ class TrunkLink {
   std::atomic_size_t out_stream_counter_;
   std::atomic_size_t in_stream_counter_;
 
-  std::chrono::steady_clock::time_point next_live_update_;  //!< Время, когда следующий раз посылать live-пакеты
+  std::chrono::steady_clock::time_point
+      next_live_update_;  //!< Время, когда следующий раз посылать live-пакеты
 
 
   // TODO Descr + kBadPacketIndex

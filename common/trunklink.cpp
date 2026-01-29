@@ -74,7 +74,8 @@ void TrunkLink::SendLivePacket() {
   for (auto& item : out_links_) {
     // Сначала удалим мёртвые соединения
     if (curt > item.deadlink_timeout_) {
-      trlog("-- Dead connect %s - removing\n", uuids::to_string(item.connect_id).c_str());
+      trlog("-- Dead connect %s - removing\n",
+          uuids::to_string(item.connect_id).c_str());
       item.link->Stop(0);
       continue;
     }
@@ -245,7 +246,7 @@ void TrunkLink::ProcessTrunkData(
 
       {
         auto pa = static_cast<const PacketAck*>(hdr);
-        ProcessAckData(cnt, pa);
+        ProcessAckData(cnt, pa->PacketIndex);
       }
       break;
     case kTrunkCommandReleaseConnect:
@@ -301,8 +302,17 @@ void TrunkLink::ProcessDataToOutlink(
   link->SendData(info->PacketIndex, data, info->DataSize);
 }
 
-void TrunkLink::ProcessAckData(uuids::uuid cnt, const PacketAck* info) {
+void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
   // TODO IMPLEMENT
+
+  std::lock_guard lk(packet_data_cache_lock_);
+  auto tail = std::remove_if(packet_data_cache_.begin(),
+      packet_data_cache_.end(), [cnt, packet_index](PacketDataCache& item) {
+        return (item.info.CtxID == cnt) && (item.info.PacketID == packet_index);
+      });
+  if (tail != packet_data_cache_.end()) {
+    packet_data_cache_.erase(tail, packet_data_cache_.end());
+  }
 }
 
 
@@ -473,8 +483,8 @@ void TrunkClient::OnCacheResend() {
     SendPacket(item.info);
 
     // TRACE
-    trlog("-- ReSend connect information for id %s\n",
-        uuids::to_string(item.info.CtxID).c_str());
+    //    trlog("-- ReSend connect information for id %s\n",
+    //        uuids::to_string(item.info.CtxID).c_str());
   }
 }
 
