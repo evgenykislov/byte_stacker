@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 enable_testing()
 
 set(SOURCES_FILES
+  "block_resources_run.cpp"
   "close_connect.cpp"
   "fixture_direct_pipe.cpp"
   "set_connect.cpp"

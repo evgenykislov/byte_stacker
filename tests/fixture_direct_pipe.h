@@ -17,14 +17,18 @@ class DirectPipe: public ::testing::Test {
   void TearDown() override;
 
   // Запуск первого приложения
-  bool StartFirstApplication(
-      const std::string& executable, const std::vector<std::string>& args) {
+  bool StartFirstApplication() {
+    const std::string executable = "../byte_stacker_in/byte_stacker_in";
+    const std::vector<std::string> args = {
+        "--local1=127.0.0.2:30001", "--trunk=127.0.0.2:40001"};
     return StartApplication(proc1, executable, args);
   }
 
   // Запуск второго приложения
-  bool StartSecondApplication(
-      const std::string& executable, const std::vector<std::string>& args) {
+  bool StartSecondApplication() {
+    const std::string executable = "../byte_stacker_out/byte_stacker_out";
+    const std::vector<std::string> args = {
+        "--external1=127.0.0.2:50001", "--trunk=127.0.0.2:40001"};
     return StartApplication(proc2, executable, args);
   }
 

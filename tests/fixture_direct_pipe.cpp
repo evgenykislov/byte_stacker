@@ -3,21 +3,11 @@
 
 void DirectPipe::SetUp() {
   // Инициализация (процессы запускаются в самом тесте)
-  // Параметры для запуска приложений
-  // ВАЖНО: Замените на реальные пути и параметры ваших приложений
-  const std::string app1_executable = "../byte_stacker_in/byte_stacker_in";
-  const std::vector<std::string> app1_args = {
-      "--local1=127.0.0.2:30001", "--trunk=127.0.0.2:40001"};
-
-  const std::string app2_executable = "../byte_stacker_out/byte_stacker_out";
-  const std::vector<std::string> app2_args = {
-      "--external1=127.0.0.2:50001", "--trunk=127.0.0.2:40001"};
-
   // Запускаем приложения
-  ASSERT_TRUE(StartFirstApplication(app1_executable, app1_args))
+  ASSERT_TRUE(StartFirstApplication())
       << "Не удалось запустить первое приложение";
 
-  ASSERT_TRUE(StartSecondApplication(app2_executable, app2_args))
+  ASSERT_TRUE(StartSecondApplication())
       << "Не удалось запустить второе приложение";
 
   // Даем приложениям время на инициализацию
