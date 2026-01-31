@@ -69,7 +69,7 @@ void TrunkLink::SendLivePacket() {
   next_live_update_ = curt + intrv;
 
   // Рассылаем live-пакеты
-  trlog("LIVE-LIVE-LIVE\n");
+  //trlog("LIVE-LIVE-LIVE\n");
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     // Сначала удалим мёртвые соединения
@@ -104,8 +104,8 @@ void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
 
 void TrunkLink::SendCmdData(
     ConnectID cnt, const void* data, size_t data_size, TrunkCommand cmd) {
-  trlog("-- Send %u bytes of data into trunk. Connect %s\n",
-      (unsigned int)data_size, uuids::to_string(cnt).c_str());
+  //trlog("-- Send %u bytes of data into trunk. Connect %s\n",
+  //    (unsigned int)data_size, uuids::to_string(cnt).c_str());
 
   if (data_size > kMaxChunkSize) {
     assert(false);
@@ -159,8 +159,8 @@ void TrunkLink::SendDisconnectInformation(ConnectID cnt) {
   uint8_t fake_buf;
   SendCmdData(cnt, &fake_buf, 0, kTrunkCommandReleaseConnect);
 
-  trlog("-- Send disconnect information. Id: %s\n",
-      uuids::to_string(cnt).c_str());
+  //trlog("-- Send disconnect information. Id: %s\n",
+  //    uuids::to_string(cnt).c_str());
 }
 
 
@@ -331,7 +331,7 @@ void TrunkLink::ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id) {
 }
 
 void TrunkLink::ProcessLive(uuids::uuid cnt) {
-  trlog(">>> Live %s\n", uuids::to_string(cnt).c_str());
+  //trlog(">>> Live %s\n", uuids::to_string(cnt).c_str());
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     if (item.connect_id == cnt) {
@@ -397,7 +397,7 @@ void TrunkLink::OnCacheResend() {
   }
 
   if (resending > 0) {
-    trlog("-- ReSend %u packets\n", resending);
+    //trlog("-- ReSend %u packets\n", resending);
   }
 }
 
@@ -454,9 +454,8 @@ void TrunkClient::SendConnectInformation(
 
   SendPacket(info);
 
-  // TRACE
-  trlog("Send connect information. Id: %s, Point %u\n",
-      uuids::to_string(cnt).c_str(), point);
+  //trlog("Send connect information. Id: %s, Point %u\n",
+  //    uuids::to_string(cnt).c_str(), point);
 }
 
 void TrunkClient::OnCacheResend() {
@@ -535,8 +534,7 @@ void TrunkClient::SendPacket(PacketInfo pkt) {
 
 void TrunkClient::ProcessAckConnectData(
     uuids::uuid cnt, const PacketHeader* info) {
-  // TRACE
-  trlog("-- Receive ack for connection id %s\n", uuids::to_string(cnt).c_str());
+  //trlog("-- Receive ack for connection id %s\n", uuids::to_string(cnt).c_str());
 
   std::lock_guard<std::mutex> lk(connect_cache_lock_);
   for (auto it = connect_cache_.begin(); it != connect_cache_.end();) {
