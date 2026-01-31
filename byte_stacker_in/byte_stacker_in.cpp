@@ -19,6 +19,9 @@ namespace this_coro = boost::asio::this_coro;
 
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
+const size_t kPoolSize = 4;
+const int kInformationInterval = 10000;
+
 
 void PrintHelp() {
   std::cout << "byte_stacker_in" << std::endl;
@@ -106,15 +109,46 @@ int main(int argc, char** argv) {
     boost::asio::io_context ctx;
     TrunkClient trc(ctx, trp);
 
+    std::atomic_bool stop_flag = false;
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
-    signals.async_wait([&](auto, auto) { ctx.stop(); });
+    signals.async_wait([&](auto, auto) {
+      stop_flag = true;
+      ctx.stop();
+    });
 
     for (auto& p : lps) {
       boost::asio::co_spawn(
           ctx, ListenLocalPoint(trc, p.first, p.second), boost::asio::detached);
     }
 
-    ctx.run();
+    // Запустим потоки обработки сети
+    std::vector<std::thread> pool;
+    for (size_t i = 0; i < kPoolSize; ++i) {
+      std::thread t([&ctx]() { ctx.run(); });
+      pool.push_back(std::move(t));
+    }
+
+    // Вывод полезной информации
+    while (!stop_flag) {
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(kInformationInterval));
+
+      auto stat = trc.GetStat();
+      std::printf("-----\nOut: %u kByte, In: %u kByte, Cnt: %zu\n",
+          (unsigned int)(stat.StreamToOutLinks / 1024),
+          (unsigned int)(stat.StreamFromOutLinks / 1024), stat.ConnectAmount);
+    }
+
+    // Остановим все потоки
+    for (auto& item : pool) {
+      if (item.joinable()) {
+        item.join();
+      }
+    }
+
+
+
+
   } catch (std::exception& err) {
     std::printf("Exception: %s\n", err.what());
   }

@@ -235,6 +235,9 @@ class TrunkClient: public TrunkLink {
   \param link экземпляр соединения. Объект не может быть пустым */
   void AddConnect(PointID point, std::shared_ptr<OutLink> link);
 
+  /*! Получить статистику по работе приложения */
+  StatInfo GetStat() { return TrunkLink::GetStat(); }
+
  private:
   TrunkClient() = delete;
   TrunkClient(const TrunkClient&) = delete;
