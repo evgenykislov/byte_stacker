@@ -33,14 +33,14 @@ class DirectPipe: public ::testing::Test {
   }
 
  private:
-  std::unique_ptr<boost::process::process> proc1;
-  std::unique_ptr<boost::process::process> proc2;
-  std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> work_;
+  std::unique_ptr<boost::process::child> proc1;
+  std::unique_ptr<boost::process::child> proc2;
+  std::unique_ptr<boost::asio::io_context::work> work_;
   std::thread io_thread_;
 
-  bool StartApplication(std::unique_ptr<boost::process::process>& programm,
+  bool StartApplication(std::unique_ptr<boost::process::child>& programm,
       const std::string& executable, const std::vector<std::string>& args);
-  void StopProcess(std::unique_ptr<boost::process::process>& proc);
+  void StopProcess(std::unique_ptr<boost::process::child>& proc);
 };
 
 

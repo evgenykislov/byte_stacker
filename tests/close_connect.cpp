@@ -78,7 +78,7 @@ TEST_F(DirectPipe, ConnectionClosePropagation) {
   // соединения
   ip::tcp::acceptor acceptor(io_ctx_);
   ip::tcp::endpoint server_endpoint(
-      ip::make_address(address_to_host), address_to_port);
+      ip::address::from_string(address_to_host), address_to_port);
 
   boost::system::error_code ec;
   acceptor.open(server_endpoint.protocol(), ec);
@@ -124,7 +124,7 @@ TEST_F(DirectPipe, ConnectionClosePropagation) {
   // Шаг 2: Подключаемся как клиент к address_from
   ip::tcp::socket client_socket(io_ctx_);
   ip::tcp::endpoint client_endpoint(
-      ip::make_address(address_from_host), address_from_port);
+      ip::address::from_string(address_from_host), address_from_port);
 
   std::promise<void> connect_promise;
   auto connect_future = connect_promise.get_future();
