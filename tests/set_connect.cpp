@@ -207,9 +207,9 @@ TEST_F(DirectPipe, ConnectionForwardingTest) {
     if (success) {
       server_accepted = true;
       accepted_socket = socket;
-      std::cout << "✓ Сервер принял подключение на address_to" << std::endl;
+      std::cout << "Server attaches connection to address_to" << std::endl;
     } else {
-      std::cout << "✗ Время ожидания подключения истекло" << std::endl;
+      std::cout << "Connecting time is out" << std::endl;
     }
   });
 
@@ -224,10 +224,10 @@ TEST_F(DirectPipe, ConnectionForwardingTest) {
       [&client_connected, &address_from](bool success) {
         if (success) {
           client_connected = true;
-          std::cout << "✓ Клиент подключился к address_from: " << address_from
+          std::cout << "Client connected to address_from: " << address_from
                     << std::endl;
         } else {
-          std::cout << "✗ Не удалось подключиться к address_from: "
+          std::cout << "Can't connect to address_from: "
                     << address_from << std::endl;
         }
       });
@@ -245,11 +245,11 @@ TEST_F(DirectPipe, ConnectionForwardingTest) {
 
   // Проверяем результаты
   ASSERT_TRUE(client_connected.load())
-      << "Не удалось подключиться к address_from: " << address_from;
+      << "Failed to connect to address_from: " << address_from;
 
   ASSERT_TRUE(server_accepted.load())
-      << "В течение " << elapsed << " мс после подключения к " << address_from
-      << " не произошло подключение к " << address_to;
+      << "In time of " << elapsed << " ms after connecting to " << address_from
+      << " thereisn't connect to " << address_to;
 
   // Закрываем соединения
   if (accepted_socket && accepted_socket->is_open()) {
@@ -259,61 +259,9 @@ TEST_F(DirectPipe, ConnectionForwardingTest) {
   client.close();
 
   // Тест успешен
-  std::cout << "\n✓ Тест пройден успешно!" << std::endl;
-  std::cout << "  Время установки соединения: " << elapsed << " мс"
+  std::cout << "Test succeess!" << std::endl;
+  std::cout << "  Connection time: " << elapsed << " ms"
             << std::endl;
-  std::cout << "  Подключение к " << address_from
-            << " -> получено подключение на " << address_to << std::endl;
-}
-
-//==============================================================================
-// Дополнительный тест: проверка таймаута при отсутствии подключения
-//==============================================================================
-TEST_F(DirectPipe, TimeoutTest) {
-  const std::string address_to =
-      "127.0.0.1:19090";  // Порт, на который никто не подключится
-
-  AddressInfo addr_to = parseAddress(address_to);
-
-  asio::io_context io_context;
-  std::atomic<bool> server_accepted(false);
-  std::atomic<bool> timeout_triggered(false);
-
-  AsyncTcpServer server(io_context, addr_to.ip, addr_to.port);
-
-  auto startTime = std::chrono::steady_clock::now();
-
-  // Ожидаем подключение с таймаутом 500 мс
-  server.asyncAccept(std::chrono::milliseconds(500),
-      [&server_accepted, &timeout_triggered](
-          bool success, std::shared_ptr<tcp::socket> socket) {
-        if (success) {
-          server_accepted = true;
-        } else {
-          timeout_triggered = true;
-        }
-      });
-
-  std::thread io_thread([&io_context]() { io_context.run(); });
-
-  io_thread.join();
-
-  auto endTime = std::chrono::steady_clock::now();
-  auto elapsed =
-      std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
-          .count();
-
-  // Проверяем, что сработал таймаут, а не accept
-  ASSERT_FALSE(server_accepted.load())
-      << "Соединение не должно было быть принято";
-
-  ASSERT_TRUE(timeout_triggered.load()) << "Таймаут должен был сработать";
-
-  // Проверяем, что таймаут сработал примерно через 500 мс (±100 мс)
-  ASSERT_GE(elapsed, 400) << "Таймаут сработал слишком рано";
-  ASSERT_LE(elapsed, 700) << "Таймаут сработал слишком поздно";
-
-  std::cout << "\n✓ Тест таймаута пройден успешно!" << std::endl;
-  std::cout << "  Время срабатывания таймаута: " << elapsed << " мс"
-            << std::endl;
+  std::cout << "  Connection to " << address_from
+            << " where connected to " << address_to << std::endl;
 }

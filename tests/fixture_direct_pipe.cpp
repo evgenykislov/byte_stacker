@@ -16,7 +16,7 @@ void DirectPipe::SetUp() {
   std::cout << "Запущены приложения Direct Pipe" << std::endl;
 
   // Создаем work guard чтобы io_context не завершился преждевременно
-  work_ = std::make_unique<boost::asio::io_context::work>(io_ctx_);
+  work_ = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(io_ctx_.get_executor());
 
   // Запускаем io_context в отдельном потоке
   io_thread_ = std::thread([this]() { io_ctx_.run(); });
@@ -40,39 +40,30 @@ void DirectPipe::TearDown() {
 
 
 bool DirectPipe::StartApplication(
-    std::unique_ptr<boost::process::child>& process,
+    std::unique_ptr<boost::process::process>& process,
     const std::string& executable, const std::vector<std::string>& args) {
   try {
-    process = std::make_unique<boost::process::child>(executable,
-        boost::process::args(args),
-        boost::process::std_out > boost::process::null,
-        boost::process::std_err > boost::process::null);
+    process = std::make_unique<boost::process::process>(io_ctx_, executable, args);
 
     // Даем процессу время на запуск
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    return process && process->valid() && process->running();
-  } catch (const std::exception& e) {
+    return process && process->running();
+  } catch (const std::exception&) {
     return false;
   }
 }
 
 
-void DirectPipe::StopProcess(std::unique_ptr<boost::process::child>& proc) {
-  if (!proc || !proc->valid()) {
+void DirectPipe::StopProcess(std::unique_ptr<boost::process::process>& proc) {
+  if (!proc || !proc->running()) {
     return;
   }
 
   try {
     if (proc->running()) {
       // Посылаем сигнал завершения (SIGTERM/SIGINT)
-#ifdef _WIN32
-      proc->terminate();
-#else
-      // На Unix отправляем SIGINT (Ctrl+C)
-      ::kill(proc->id(), SIGINT);
-#endif
-
+      proc->request_exit();
       // Ждем завершения процесса с таймаутом
       bool exited = false;
       for (int i = 0; i < 50 && !exited; ++i) {

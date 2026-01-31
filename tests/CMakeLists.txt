@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.25)
 
 project(tests CXX)
 
@@ -19,13 +19,13 @@ set(HEADERS_FILES
   "fixture_direct_pipe.h"
 )
 
-find_package(GTest CONFIG REQUIRED)
+find_package(Threads REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system filesystem)
+find_package(GTest REQUIRED)
 
 add_executable(${PROJECT_NAME} ${HEADERS_FILES} ${SOURCES_FILES})
 
-#target_include_directories(${PROJECT_NAME} PRIVATE "../common")
-
-target_link_libraries(${PROJECT_NAME} GTest::gtest_main)
+target_link_libraries(${PROJECT_NAME} PRIVATE GTest::gtest_main Boost::system Boost::filesystem)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   # If the debug configuration pass the DEBUG define to the compiler 
