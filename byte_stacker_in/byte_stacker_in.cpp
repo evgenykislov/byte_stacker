@@ -12,6 +12,7 @@
 #include "inlink.h"
 #include "outlink.h"
 #include "parser.h"
+#include "trace.h"
 #include "trunklink.h"
 
 namespace bai = boost::asio::ip;
@@ -49,21 +50,30 @@ void RegisterConnect(TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
 }
 
 
-/*! Функция слушает одну локальную точку, устанавливает соединения через неё.
-Функция асинхронная через сопрограммы boost:asio
-\param tpc клиент транковой связи (фактически глобальный экземпляр)
-\param id идентификатор точки
-\param point точка для установки соединений
-\return объект-ожидание для работы в среде asio */
-boost::asio::awaitable<void> ListenLocalPoint(
-    TrunkClient& trc, PointID id, boost::asio::ip::tcp::endpoint point) {
-  auto executor = co_await this_coro::executor;
-  bai::tcp::acceptor acceptor(executor, point);
-  for (;;) {
-    bai::tcp::socket socket =
-        co_await acceptor.async_accept(boost::asio::use_awaitable);
-    RegisterConnect(trc, id, std::move(socket));
-  }
+// TODO Descr
+void RequestAccept(boost::asio::io_context& ctx,
+    std::shared_ptr<bai::tcp::acceptor> acp, TrunkClient& trc, PointID id) {
+  auto socket = std::make_shared<bai::tcp::socket>(ctx);
+  acp->async_accept(*socket,
+      [&ctx, &trc, socket, acp, id](const boost::system::error_code& error) {
+        if (error) {
+          // TODO Process error
+          trlog("ERROR: can't accept to point %u: %s\n", id,
+              error.message().c_str());
+          return;
+        }
+
+        RegisterConnect(trc, id, std::move(*socket.get()));
+        RequestAccept(ctx, acp, trc, id);
+      });
+}
+
+
+// TODO Descr
+void ListenLocalPoint(boost::asio::io_context& ctx, TrunkClient& trc,
+    PointID id, boost::asio::ip::tcp::endpoint point) {
+  auto acceptor = std::make_shared<bai::tcp::acceptor>(ctx, point);
+  RequestAccept(ctx, acceptor, trc, id);
 }
 
 
@@ -117,8 +127,7 @@ int main(int argc, char** argv) {
     });
 
     for (auto& p : lps) {
-      boost::asio::co_spawn(
-          ctx, ListenLocalPoint(trc, p.first, p.second), boost::asio::detached);
+      ListenLocalPoint(ctx, trc, p.first, p.second);
     }
 
     // Запустим потоки обработки сети
@@ -145,8 +154,6 @@ int main(int argc, char** argv) {
         item.join();
       }
     }
-
-
 
 
   } catch (std::exception& err) {
