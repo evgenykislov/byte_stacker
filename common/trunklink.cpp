@@ -300,14 +300,9 @@ void TrunkLink::ProcessDataToOutlink(
     uuids::uuid cnt, const PacketData* info, const void* data) {
   //    trlog("-- Got %u bytes from trunk for connect %s\n",
   //        (unsigned int)info->DataSize, uuids::to_string(cnt).c_str());
-  auto link = GetOutLink(cnt);
-  if (!link) {
-    // Нет такого подключения
-    // TODO Error process
-    return;
-  }
 
   // Отправим подтверждение на получение пакета
+  // Подтверждение шлём, даже если соединение уже "умерло"
   assert(sizeof(PacketAck) <= kPacketBufferSize);
   auto buf = GetBuffer();
   auto pkt = (PacketAck*)(buf.get());
@@ -323,8 +318,13 @@ void TrunkLink::ProcessDataToOutlink(
   SendPacket(pi);
 
   // Выдадим данные на внешний линк
-  out_stream_counter_ += info->DataSize;
-  link->SendData(info->PacketIndex, data, info->DataSize);
+  auto link = GetOutLink(cnt);
+  if (link) {
+    out_stream_counter_ += info->DataSize;
+    link->SendData(info->PacketIndex, data, info->DataSize);
+  }
+  // else - Нет такого подключения. Уже удалено, закрыто или др.
+  // В общем, ничего не делаем
 }
 
 void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
