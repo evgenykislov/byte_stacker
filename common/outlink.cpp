@@ -200,8 +200,8 @@ void OutLink::RequestWrite() {
     write_idle_timer_.async_wait(
         [selfptr](const boost::system::error_code& err) {
           if (!err) {
-            trlog("-- Write idles for timeout. Connect %s\n",
-                uuids::to_string(selfptr->selfid_).c_str());
+            //            trlog("-- Write idles for timeout. Connect %s\n",
+            //                uuids::to_string(selfptr->selfid_).c_str());
           }
           selfptr->RequestWrite();
         });

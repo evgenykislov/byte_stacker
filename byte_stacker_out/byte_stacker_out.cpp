@@ -8,6 +8,7 @@
 
 #include "outlink.h"
 #include "parser.h"
+#include "trace.h"
 #include "trunklink.h"
 
 namespace bai = boost::asio::ip;
@@ -116,9 +117,13 @@ int main(int argc, char** argv) {
         !stop_var.wait_for(sl, std::chrono::milliseconds(kInformationInterval),
             [&stop_flag]() { return stop_flag; })) {
       auto stat = trs.GetStat();
-      std::printf("-----\nOut: %u kByte, In: %u kByte, Cnt: %zu\n",
-          (unsigned int)(stat.StreamToOutLinks / 1024),
-          (unsigned int)(stat.StreamFromOutLinks / 1024), stat.ConnectAmount);
+      auto ospeed = (unsigned int)(stat.StreamToOutLinks * 1000 / 1024 /
+                                   kInformationInterval);
+      auto ispeed = (unsigned int)(stat.StreamFromOutLinks * 1000 / 1024 /
+                                   kInformationInterval);
+      auto cnt = (unsigned int)(stat.ConnectAmount);
+      tout(": External: %8u kBytes/s | Trunk: %8u kBytes/s | Connects: %8u\n",
+          ospeed, ispeed, cnt);
     }
     sl.unlock();
 

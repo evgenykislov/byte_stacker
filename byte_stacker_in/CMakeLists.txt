@@ -21,6 +21,7 @@ set(HEADER_FILES
   "../common/outlink.h"
   "../common/data.h"
   "../common/parser.h"
+  "../common/trace.h"
   "../common/trunklink.h"
 )
 
