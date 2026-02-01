@@ -117,13 +117,20 @@ int main(int argc, char** argv) {
 
   try {
     boost::asio::io_context ctx;
+    // Переменная на остановку
+    std::condition_variable stop_var;
+    bool stop_flag;
+    std::mutex stop_lock;
+
     TrunkClient trc(ctx, trp);
 
-    std::atomic_bool stop_flag = false;
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
-      stop_flag = true;
       ctx.stop();
+      // Проинформируем об остановке
+      std::lock_guard lk(stop_lock);
+      stop_flag = true;
+      stop_var.notify_all();
     });
 
     for (auto& p : lps) {
@@ -138,15 +145,17 @@ int main(int argc, char** argv) {
     }
 
     // Вывод полезной информации
-    while (!stop_flag) {
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(kInformationInterval));
-
+    std::unique_lock sl(stop_lock);
+    while (
+        !stop_var.wait_for(sl, std::chrono::milliseconds(kInformationInterval),
+            [&stop_flag]() { return stop_flag; })) {
       auto stat = trc.GetStat();
       std::printf("-----\nOut: %u kByte, In: %u kByte, Cnt: %zu\n",
           (unsigned int)(stat.StreamToOutLinks / 1024),
           (unsigned int)(stat.StreamFromOutLinks / 1024), stat.ConnectAmount);
     }
+    sl.unlock();
+
 
     // Остановим все потоки
     for (auto& item : pool) {
