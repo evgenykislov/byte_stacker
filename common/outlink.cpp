@@ -358,13 +358,13 @@ void OutLink::SendData(uint32_t chunk_id, const void* data, size_t data_size) {
   write_idle_timer_.cancel();  // Отменяем таймер на ожидание следующей записи
 }
 
-void OutLink::Stop(uint32_t stop_chunk) {
+void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
   std::unique_lock lk(write_chunks_lock_);
   if (stop_chunk <= next_write_chunk_id_) {
     // Фактически уже всё передали. Возможно даже и с опозданием.
     // В любом случае, данных больше не планируется
     // Закрываемся тем, что есть на текущий момент
-    trlog("Outlink close on current point\n");
+    //    trlog("Outlink close on current point\n");
 
     stop_write_chunk_id_ = next_write_chunk_id_;
     stop_after_all_write_ = true;
@@ -375,7 +375,7 @@ void OutLink::Stop(uint32_t stop_chunk) {
 
   // Так, планируются ещё данные к передаче
   assert(stop_chunk > next_write_chunk_id_);
-  trlog("Outlink close on near future\n");
+  //  trlog("Outlink close on near future\n");
   stop_write_chunk_id_ = stop_chunk;
   for (auto it = write_chunks_.begin(); it != write_chunks_.end(); /* noop */) {
     if (it->first >= stop_chunk) {

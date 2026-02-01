@@ -59,6 +59,10 @@ struct StatInfo {
   size_t StreamFromOutLinks;  //!< Поток данных в транс из внешних соединений,
                               // байт с момента последнего запроса
   size_t ConnectAmount;  //! Текущее количество подключений
+  size_t MinPing;  // Минимальный пинг на транке, в микросекундах
+  size_t MaxPing;
+  size_t AveragePing;
+  size_t FauldPacket;
 };
 
 class OutLink;
@@ -177,8 +181,10 @@ class TrunkLink {
   TrunkLink& operator=(TrunkLink&&) = delete;
 
 
-  struct PacketDataCache {  // TODO remove due to parent class
+  struct PacketDataCache {
     PacketInfo info;
+    std::chrono::steady_clock::time_point
+        FirstSend;  //!< Время первоначальной отсылки пакета
     std::chrono::steady_clock::time_point
         Deadline;  //!< Время, после которого считается соединение разорванным
     std::chrono::steady_clock::time_point
@@ -189,6 +195,7 @@ class TrunkLink {
   static const size_t kUpdateTick = 100;
   static const size_t kLiveUpdateTick = 1000;
   static const size_t kDeadLinkTimeout = 5000;
+  static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 
   bool server_side_;
 
@@ -196,8 +203,18 @@ class TrunkLink {
   std::mutex packet_data_cache_lock_;
   boost::asio::steady_timer update_timer_;
 
+  // Данные для вывода статистики
   std::atomic_size_t out_stream_counter_;
   std::atomic_size_t in_stream_counter_;
+
+  // Поля trunk_ping_... и trunk_packet_fault_ лочатся stat_lock_
+  size_t trunk_ping_min_;  // Минимальное время посылки-подтверждения пакета, в
+                           // микросекундах
+  size_t trunk_ping_max_;  // Максимальное время посылки-подтверждения пакета
+  size_t trunk_ping_summ_;  // Общее время посылки-подтверждения пакета
+  size_t trunk_ping_count_;  // Количетсво посылок-подтверждений пакетов
+  size_t trunk_packet_fault_;  // Количество недоставленных пакетов
+  std::mutex stat_lock_;
 
   std::chrono::steady_clock::time_point
       next_live_update_;  //!< Время, когда следующий раз посылать live-пакеты

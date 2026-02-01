@@ -122,8 +122,11 @@ int main(int argc, char** argv) {
       auto ispeed = (unsigned int)(stat.StreamFromOutLinks * 1000 / 1024 /
                                    kInformationInterval);
       auto cnt = (unsigned int)(stat.ConnectAmount);
-      tout(": External: %8u kBytes/s | Trunk: %8u kBytes/s | Connects: %8u\n",
-          ospeed, ispeed, cnt);
+      tout(
+          ": FAULT: %8u | External: %8u kBytes/s | Trunk: %8u kBytes/s | "
+          "Connects: %8u | Ping(min,avg,max): %.1f/%.1f/%.1f\n",
+          stat.FauldPacket, ospeed, ispeed, cnt, stat.MinPing / 1000.0,
+          stat.AveragePing / 1000.0, stat.MaxPing / 1000.0);
     }
     sl.unlock();
 

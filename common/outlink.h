@@ -42,6 +42,13 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
 
   virtual ~OutLink();
 
+  enum StopReason {
+    kStopReleaseCommand,  // Пришла команда на закрытие соединения
+    kStopNoLive,  // Нет live-пакетов о соединении (возможно, другая сторона
+                  // отсутствует)
+    kStopChunkAbsent  // Нет чанка с данными
+  };
+
   /*! Запуск подключения в работу. Функция неблокирующая
   \param hoster указатель на "хостера", который работает со всеми подключениями.
   Указатель должен быть корректным, пока идёт работе подлключения
@@ -56,7 +63,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   принимаются в отправку. Если нужно остановить соединение "на сейчас", то
   задаём чанк 0.
   \param stop_chunk номер чанка, следующего за последним валидным */
-  void Stop(uint32_t stop_chunk);
+  void Stop(uint32_t stop_chunk, StopReason reason);
 
  private:
   OutLink() = delete;

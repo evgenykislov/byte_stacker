@@ -19,7 +19,12 @@ TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side)
     : server_side_(server_side),
       update_timer_(ctx),
       out_stream_counter_(0),
-      in_stream_counter_(0) {
+      in_stream_counter_(0),
+      trunk_ping_min_(kUndefinedSizeT),
+      trunk_ping_max_{0},
+      trunk_ping_summ_{0},
+      trunk_ping_count_{0},
+      trunk_packet_fault_{0} {
   std::chrono::milliseconds intrv{kLiveUpdateTick};
   next_live_update_ = std::chrono::steady_clock::now() + intrv;
 
@@ -69,14 +74,14 @@ void TrunkLink::SendLivePacket() {
   next_live_update_ = curt + intrv;
 
   // Рассылаем live-пакеты
-  //trlog("LIVE-LIVE-LIVE\n");
+  // trlog("LIVE-LIVE-LIVE\n");
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     // Сначала удалим мёртвые соединения
     if (curt > item.deadlink_timeout_) {
       trlog("-- Dead connect %s - removing\n",
           uuids::to_string(item.connect_id).c_str());
-      item.link->Stop(0);
+      item.link->Stop(0, OutLink::kStopNoLive);
       continue;
     }
 
@@ -104,8 +109,8 @@ void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
 
 void TrunkLink::SendCmdData(
     ConnectID cnt, const void* data, size_t data_size, TrunkCommand cmd) {
-  //trlog("-- Send %u bytes of data into trunk. Connect %s\n",
-  //    (unsigned int)data_size, uuids::to_string(cnt).c_str());
+  // trlog("-- Send %u bytes of data into trunk. Connect %s\n",
+  //     (unsigned int)data_size, uuids::to_string(cnt).c_str());
 
   if (data_size > kMaxChunkSize) {
     assert(false);
@@ -139,6 +144,7 @@ void TrunkLink::SendCmdData(
   PacketDataCache pc;
   pc.info = info;
   auto curt = std::chrono::steady_clock::now();
+  pc.FirstSend = curt;
   pc.Deadline = curt + std::chrono::milliseconds(kDeadlineTimeout);
   pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
 
@@ -159,8 +165,8 @@ void TrunkLink::SendDisconnectInformation(ConnectID cnt) {
   uint8_t fake_buf;
   SendCmdData(cnt, &fake_buf, 0, kTrunkCommandReleaseConnect);
 
-  //trlog("-- Send disconnect information. Id: %s\n",
-  //    uuids::to_string(cnt).c_str());
+  // trlog("-- Send disconnect information. Id: %s\n",
+  //     uuids::to_string(cnt).c_str());
 }
 
 
@@ -173,6 +179,25 @@ StatInfo TrunkLink::GetStat() {
   std::unique_lock lk(out_links_lock_);
   res.ConnectAmount = out_links_.size();
   lk.unlock();
+
+  std::unique_lock lks(stat_lock_);
+  res.FauldPacket = trunk_packet_fault_;
+  if (trunk_ping_count_ == 0) {
+    res.MinPing = 0;
+    res.MaxPing = 0;
+    res.AveragePing = 0;
+  } else {
+    res.MinPing = trunk_ping_min_;
+    res.MaxPing = trunk_ping_max_;
+    res.AveragePing = trunk_ping_summ_ / trunk_ping_count_;
+  }
+  // Сбросим показатели
+  trunk_ping_min_ = kUndefinedSizeT;
+  trunk_ping_max_ = 0;
+  trunk_ping_summ_ = 0;
+  trunk_ping_count_ = 0;
+  trunk_packet_fault_ = 0;
+  lks.unlock();
 
   return res;
 }
@@ -304,14 +329,32 @@ void TrunkLink::ProcessDataToOutlink(
 
 void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
   // TODO IMPLEMENT
+  size_t ping = kUndefinedSizeT;
 
-  std::lock_guard lk(packet_data_cache_lock_);
+  std::unique_lock lk(packet_data_cache_lock_);
   auto tail = std::remove_if(packet_data_cache_.begin(),
       packet_data_cache_.end(), [cnt, packet_index](PacketDataCache& item) {
         return (item.info.CtxID == cnt) && (item.info.PacketID == packet_index);
       });
   if (tail != packet_data_cache_.end()) {
+    // Такой пакет в кэше есть
+    ping = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - tail->FirstSend)
+               .count();
     packet_data_cache_.erase(tail, packet_data_cache_.end());
+  }
+  lk.unlock();
+
+  if (ping != kUndefinedSizeT) {
+    std::lock_guard lk(stat_lock_);
+    if (ping < trunk_ping_min_) {
+      trunk_ping_min_ = ping;
+    }
+    if (ping > trunk_ping_max_) {
+      trunk_ping_max_ = ping;
+    }
+    trunk_ping_summ_ += ping;
+    ++trunk_ping_count_;
   }
 }
 
@@ -324,14 +367,15 @@ void TrunkLink::ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id) {
     return;
   }
 
-  trlog("-- Close connect %s with packet %u\n", uuids::to_string(cnt).c_str(),
-      packet_id);
+  //  trlog("-- Close connect %s with packet %u\n",
+  //  uuids::to_string(cnt).c_str(),
+  //      packet_id);
 
-  link->Stop(packet_id);
+  link->Stop(packet_id, OutLink::kStopReleaseCommand);
 }
 
 void TrunkLink::ProcessLive(uuids::uuid cnt) {
-  //trlog(">>> Live %s\n", uuids::to_string(cnt).c_str());
+  // trlog(">>> Live %s\n", uuids::to_string(cnt).c_str());
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     if (item.connect_id == cnt) {
@@ -374,18 +418,21 @@ std::shared_ptr<TrunkLink::PacketBuffer> TrunkLink::GetBuffer() {
 }
 
 void TrunkLink::OnCacheResend() {
-  std::lock_guard lk(packet_data_cache_lock_);
+  size_t deadp = 0;
+  size_t resending = 0;
+
+  std::unique_lock lk(packet_data_cache_lock_);
   auto curt = std::chrono::steady_clock::now();
 
   auto tail =
       std::remove_if(packet_data_cache_.begin(), packet_data_cache_.end(),
           [curt](PacketDataCache& item) { return curt > item.Deadline; });
   if (tail != packet_data_cache_.end()) {
-    trlog("-- Removing %u deadline packets\n", packet_data_cache_.end() - tail);
+    deadp = packet_data_cache_.end() - tail;
+    trlog("-- Removing %u deadline packets\n", (unsigned int)deadp);
     packet_data_cache_.erase(tail, packet_data_cache_.end());
   }
 
-  size_t resending = 0;
   for (auto it = packet_data_cache_.begin(); it != packet_data_cache_.end();
        ++it) {
     if (curt > it->NextSend) {
@@ -395,9 +442,15 @@ void TrunkLink::OnCacheResend() {
       SendPacket(it->info);
     }
   }
+  lk.unlock();
+
+  if (deadp > 0) {
+    std::lock_guard lk(stat_lock_);
+    trunk_packet_fault_ += deadp;
+  }
 
   if (resending > 0) {
-    //trlog("-- ReSend %u packets\n", resending);
+    // trlog("-- ReSend %u packets\n", resending);
   }
 }
 
@@ -454,8 +507,8 @@ void TrunkClient::SendConnectInformation(
 
   SendPacket(info);
 
-  //trlog("Send connect information. Id: %s, Point %u\n",
-  //    uuids::to_string(cnt).c_str(), point);
+  // trlog("Send connect information. Id: %s, Point %u\n",
+  //     uuids::to_string(cnt).c_str(), point);
 }
 
 void TrunkClient::OnCacheResend() {
@@ -534,7 +587,8 @@ void TrunkClient::SendPacket(PacketInfo pkt) {
 
 void TrunkClient::ProcessAckConnectData(
     uuids::uuid cnt, const PacketHeader* info) {
-  //trlog("-- Receive ack for connection id %s\n", uuids::to_string(cnt).c_str());
+  // trlog("-- Receive ack for connection id %s\n",
+  // uuids::to_string(cnt).c_str());
 
   std::lock_guard<std::mutex> lk(connect_cache_lock_);
   for (auto it = connect_cache_.begin(); it != connect_cache_.end();) {
