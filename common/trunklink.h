@@ -53,6 +53,11 @@ struct PacketAck: PacketHeader {
 };
 
 
+struct PacketLive: PacketHeader {
+  uint64_t WrittenOutSize;  //!< Общий записанный вовне объём для соединения
+};
+
+
 struct StatInfo {
   size_t StreamToOutLinks;  //!< Поток данных наружу через внешние соединения,
                             // байт с момента последнего запроса
@@ -144,8 +149,9 @@ class TrunkLink {
   void ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id);
 
   /*! Обработка пришедшего из транка live-пакета
-  \param cnt идентификатор соединения */
-  void ProcessLive(uuids::uuid cnt);
+  \param cnt идентификатор соединения
+  \param written объем записанных данных (для другого конца коннекта) */
+  void ProcessLive(uuids::uuid cnt, uint64_t written);
 
   /*! Внутренняя функция: добавляет внешнюю связь для заданного коннекта.
   Функцию необходимо вызывать с захваченной блокировкой out_links_lock_.
@@ -193,7 +199,7 @@ class TrunkLink {
 
 
   static const size_t kUpdateTick = 100;
-  static const size_t kLiveUpdateTick = 1000;
+  static const size_t kLiveUpdateTick = 300;
   static const size_t kDeadLinkTimeout = 5000;
   static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 

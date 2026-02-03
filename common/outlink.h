@@ -65,6 +65,15 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   \param stop_chunk номер чанка, следующего за последним валидным */
   void Stop(uint32_t stop_chunk, StopReason reason);
 
+  /*! Выдаём объём данных, записанных "наружу" этим outlink-ом. Значение
+  используется для балансировки трафика
+  \return общий записанный объём, байт */
+  uint64_t GetWrittenVolume();
+
+  /*! Сохраняет объём данных, записанный парным/другим концом соединения
+  \param volume объём записанных данных на другой стороне, байт */
+  void SetOtherSideWrittenVolume(uint64_t volume);
+
  private:
   OutLink() = delete;
   OutLink(const OutLink&) = delete;
@@ -96,6 +105,12 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   /*! Таймаут на ожидание данных на запись, в миллисекундах */
   static const size_t kWriteIdleTimeout = 10000;
 
+  /*! Таймаут на ожидание перед запросом чтения, в миллисекундах */
+  static const size_t kReadIdleTimeout = 200;
+
+  /*! Максимальный объём данных в обработке, байт */
+  static const uint64_t kMaxProcessingDataSize = 2000000;
+
   static const uint32_t kUndefinedChunkID = static_cast<uint32_t>(-1);
 
   boost::asio::ip::tcp::socket socket_;  //! Сокет подключения
@@ -109,6 +124,11 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
 
   std::atomic_bool read_processing_;
   std::atomic_bool write_processing_;
+  std::atomic_uint64_t
+      written_volume_;  //!< Общий записанный вовне объём данных
+  std::atomic_uint64_t
+      otherside_written_volume_;  //!< Общий объём записанных данных другой
+                                  //!< частью соединения
 
   /*! Флаг, что вызов закрытия соединения на хостере уже инициирован.
   Используется только в функции CheckStopReadWrite.
@@ -150,6 +170,9 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   /*! Таймер на ожидание новых данных для записи */
   boost::asio::steady_timer write_idle_timer_;
 
+  /*! Таймер для ожидания на чтение, чтобы не переполнять входную очередь */
+  boost::asio::steady_timer read_idle_timer_;
+
   // TODO Descr
   void FillNetworkBuffer();
 
@@ -164,6 +187,10 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   /*! Парная функция обработки для RequestRead */
   void RequestReadProcessing(
       const boost::system::error_code& err, std::size_t bytes_transferred);
+
+  /*! Функция принудительного ожидания перед чтением, чтобы не вычитать слишком
+   * много данных, которые потом не передать */
+  void RequestReadIdle();
 
   /*! Функция запроса подключения к первой точке в списке от резолвинга. В
   случае неудачи эта "первая точка" удаляется из списка и делается опять вызов

@@ -85,16 +85,17 @@ void TrunkLink::SendLivePacket() {
       continue;
     }
 
-    assert(sizeof(PacketHeader) <= kPacketBufferSize);
+    assert(sizeof(PacketLive) <= kPacketBufferSize);
     auto buf = GetBuffer();
-    auto pkt = (PacketHeader*)(buf.get());
+    auto pkt = (PacketLive*)(buf.get());
     CopyConnectID(pkt->ConnectID, item.connect_id);
     pkt->PacketCommand = kTrunkCommandLive;
+    pkt->WrittenOutSize = item.link->GetWrittenVolume();
     PacketInfo pi;
     pi.CtxID = item.connect_id;
     pi.PacketID = kEmptyPacketID;
     pi.PacketData = buf;
-    pi.PacketSize = sizeof(PacketHeader);
+    pi.PacketSize = sizeof(PacketLive);
     SendPacket(pi);
   }
 }
@@ -291,7 +292,13 @@ void TrunkLink::ProcessTrunkData(
       }
       break;
     case kTrunkCommandLive:
-      ProcessLive(cnt);
+      if (data_size != sizeof(PacketLive)) {
+        // Неправильный формат
+        return;
+      } else {
+        auto pl = static_cast<const PacketLive*>(hdr);
+        ProcessLive(cnt, pl->WrittenOutSize);
+      }
       break;
   }
 }
@@ -374,7 +381,7 @@ void TrunkLink::ProcessReleaseConnect(uuids::uuid cnt, uint32_t packet_id) {
   link->Stop(packet_id, OutLink::kStopReleaseCommand);
 }
 
-void TrunkLink::ProcessLive(uuids::uuid cnt) {
+void TrunkLink::ProcessLive(uuids::uuid cnt, uint64_t written) {
   // trlog(">>> Live %s\n", uuids::to_string(cnt).c_str());
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
