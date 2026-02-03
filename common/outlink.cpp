@@ -23,11 +23,14 @@ OutLink::OutLink(boost::asio::ip::tcp::socket&& socket)
       hoster_(nullptr),
       read_processing_(false),
       write_processing_(false),
+      written_volume_(0),
+      otherside_written_volume_(0),
       stop_write_chunk_id_(kUndefinedChunkID),
       stop_after_all_write_(false),
       stop_write_immediate_(false),
       next_write_chunk_id_{0},
-      write_idle_timer_(socket_.get_executor()) {
+      write_idle_timer_(socket_.get_executor()),
+      read_idle_timer_(socket_.get_executor()) {
   close_invoked_.clear();
 }
 
@@ -73,6 +76,7 @@ void OutLink::CancelReadWrite() {
   std::lock_guard lk(write_chunks_lock_);
   stop_write_immediate_ = true;
   write_idle_timer_.cancel();
+  read_idle_timer_.cancel();
 }
 
 
@@ -85,17 +89,40 @@ OutLink::OutLink(
       hoster_(nullptr),
       read_processing_(false),
       write_processing_(false),
+      written_volume_(0),
+      otherside_written_volume_(0),
       stop_write_chunk_id_(kUndefinedChunkID),
       stop_after_all_write_(false),
       stop_write_immediate_(false),
       next_write_chunk_id_{0},
-      write_idle_timer_(ctx) {
+      write_idle_timer_(ctx),
+      read_idle_timer_(ctx) {
   close_invoked_.clear();
 }
 
 
 void OutLink::RequestRead() {
   assert(read_processing_.load());
+  // Посчитаем объём недоставленных данных. Может пока повременить с чтением
+  uint64_t w1 = written_volume_;
+  uint64_t w2 = otherside_written_volume_;
+  assert(
+      w2 <= w1);  // Обычно объём уже доставленных данным не больше отправленных
+  if (w2 > w1) {
+    read_processing_ = false;
+    CancelReadWrite();
+    CheckReadyClose();
+    return;
+  }
+
+  uint64_t dw = w1 - w2;  // Данных в доставке
+  if (dw > kMaxProcessingDataSize) {
+    // Пока подождём
+    RequestReadIdle();
+    return;
+  }
+
+
   auto selfptr = shared_from_this();
   //  trlog("-- Request read for outlink socket\n");
   socket_.async_read_some(boost::asio::buffer(read_buffer_),
@@ -131,6 +158,20 @@ void OutLink::RequestReadProcessing(
   }
 
   RequestRead();
+}
+
+void OutLink::RequestReadIdle() {
+  auto selfptr = shared_from_this();
+  std::chrono::milliseconds intrv{kReadIdleTimeout};
+  read_idle_timer_.expires_after(intrv);
+  read_idle_timer_.async_wait([selfptr](const boost::system::error_code& err) {
+    if (err) {
+      // Ошибка на ожидание перед чтением.
+      // Скорее всего всё закрывается
+      return;
+    }
+    selfptr->RequestRead();
+  });
 }
 
 
@@ -245,6 +286,7 @@ void OutLink::RequestWriteProcessing(
     return;
   }
 
+  written_volume_ += bytes_transferred;
   network_write_buffer_.erase(network_write_buffer_.begin(),
       network_write_buffer_.begin() + bytes_transferred);
   RequestWrite();
@@ -384,4 +426,10 @@ void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
       ++it;
     }
   }
+}
+
+uint64_t OutLink::GetWrittenVolume() { return written_volume_; }
+
+void OutLink::SetOtherSideWrittenVolume(uint64_t volume) {
+  otherside_written_volume_ = volume;
 }
