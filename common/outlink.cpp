@@ -168,6 +168,9 @@ void OutLink::RequestReadIdle() {
     if (err) {
       // Ошибка на ожидание перед чтением.
       // Скорее всего всё закрывается
+      selfptr->read_processing_ = false;
+      selfptr->CancelReadWrite();
+      selfptr->CheckReadyClose();
       return;
     }
     selfptr->RequestRead();
@@ -402,6 +405,11 @@ void OutLink::SendData(uint32_t chunk_id, const void* data, size_t data_size) {
 
 void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
   std::unique_lock lk(write_chunks_lock_);
+  if (stop_write_chunk_id_ != kUndefinedChunkID) {
+    // Остановка уже инициирована
+    return;
+  }
+
   if (stop_chunk <= next_write_chunk_id_) {
     // Фактически уже всё передали. Возможно даже и с опозданием.
     // В любом случае, данных больше не планируется
@@ -412,6 +420,7 @@ void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
     stop_after_all_write_ = true;
     write_chunks_.clear();
     write_idle_timer_.cancel();
+    read_idle_timer_.cancel();
     return;
   }
 
