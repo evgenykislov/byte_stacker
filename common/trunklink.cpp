@@ -707,9 +707,18 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
 
   auto& ts = trunk_sockets_[info.socket_index];
   auto buf = pkt.PacketData;
+  auto send_start = std::chrono::steady_clock::now();
   ts.socket.async_send_to(boost::asio::buffer(buf.get(), pkt.PacketSize),
       info.client,
-      [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+      [buf, send_start](
+          boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {
+        auto in = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - send_start)
+                      .count();
+        if (in > 1000) {
+          trlog("=== Packet send %u ms\n", (unsigned int)in);
+        }
+      });
 }
 
 bool TrunkServer::GetPacketConnectID(
