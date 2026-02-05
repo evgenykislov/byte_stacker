@@ -81,11 +81,19 @@ class TrunkLink {
 
   virtual ~TrunkLink() {}
 
-  // TODO Descr
+  /*! Послать данные в транк с явным указанием типа команды/данных
+  \param cnt идентификатор коннекта
+  \param data данные к передаче
+  \param data_size размер данных к передаче
+  \param cmd команда, под которой передаются данные */
   void SendCmdData(
       ConnectID cnt, const void* data, size_t data_size, TrunkCommand cmd);
 
-  // TODO Descr
+  /*! Послать данные в транк. Тип/команда присвоится автоматически, как обычные
+  данные. Функция использует более специализированную версию SendCmdData.
+  \param cnt идентификатор коннекта
+  \param data данные к передаче
+  \param data_size размер данных к передаче */
   void SendData(ConnectID cnt, const void* data, size_t data_size);
 
   /*! Закрыть коннект по сигналу "снаружи": соединение разорвано и т.п.
