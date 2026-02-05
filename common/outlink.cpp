@@ -442,3 +442,13 @@ uint64_t OutLink::GetWrittenVolume() { return written_volume_; }
 void OutLink::SetOtherSideWrittenVolume(uint64_t volume) {
   otherside_written_volume_ = volume;
 }
+
+void OutLink::PrintState() {
+  trlog(
+      "Outlink state: rep %u, wrp %u, cloinv %u, stopch %u, stopall %u, "
+      "stopwri %u\n",
+      (unsigned int)read_processing_.load(),
+      (unsigned int)write_processing_.load(),
+      (unsigned int)close_invoked_.test(), (unsigned int)stop_write_chunk_id_,
+      (unsigned int)stop_after_all_write_, (unsigned int)stop_write_immediate_);
+}

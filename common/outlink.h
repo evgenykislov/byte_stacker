@@ -74,6 +74,11 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   \param volume объём записанных данных на другой стороне, байт */
   void SetOtherSideWrittenVolume(uint64_t volume);
 
+
+  // TODO Descr
+  // TODO DEBUG-DEBUG
+  void PrintState();
+
  private:
   OutLink() = delete;
   OutLink(const OutLink&) = delete;

@@ -82,6 +82,11 @@ void TrunkLink::SendLivePacket() {
       trlog("-- Dead connect %s - removing\n",
           uuids::to_string(item.connect_id).c_str());
       item.link->Stop(0, OutLink::kStopNoLive);
+
+      if (curt > (item.deadlink_timeout_ + std::chrono::seconds(10))) {
+        item.link->PrintState();
+      }
+
       continue;
     }
 
