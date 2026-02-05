@@ -54,10 +54,12 @@ void TrunkLink::RequestUpdate() {
       return;
     }
 
+    // Продвинем очередь
+    std::unique_lock lk(packet_data_cache_lock_);
+    PushDataQueueWOLock();
+    lk.unlock();
+
     SendLivePacket();
-
-    // TODO Remove stopped,completed outlinks
-
     OnCacheResend();
 
     RequestUpdate();
@@ -96,7 +98,38 @@ void TrunkLink::SendLivePacket() {
     pi.PacketID = kEmptyPacketID;
     pi.PacketData = buf;
     pi.PacketSize = sizeof(PacketLive);
-    SendPacket(pi);
+    SendPacket(pi);  // Live-пакет шлём без кэширования - это же live
+  }
+}
+
+void TrunkLink::PushDataQueueWOLock() {
+  if (data_sent_.size() > kDefaultSentQueueSize) {
+    // Очередь отправленных пакетов полная. Ждём
+    return;
+  }
+
+  auto avail = kDefaultSentQueueSize - data_sent_.size();
+  assert(avail > 0);
+  for (size_t i = 0; i < avail; ++i) {
+    if (data_queue_.empty()) {
+      return;
+    }
+
+    auto item = data_queue_.front();
+    auto curt = std::chrono::steady_clock::now();
+    if (curt > item.Deadline) {
+      // Пакет ещё не передаавался, но уже устарел
+      // TODO TODO TODO Обработать
+
+      trlog("!!!!!!!!!!!!!!!!!!!!!!!!!! Dead packet before sending\n");
+    }
+
+    item.FirstSend = curt;
+    item.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+    data_sent_.push_back(item);
+    data_queue_.pop_front();
+
+    SendPacket(item.info);
   }
 }
 
@@ -150,10 +183,9 @@ void TrunkLink::SendCmdData(
   pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
 
   std::unique_lock<std::mutex> lk(packet_data_cache_lock_);
-  packet_data_cache_.push_back(pc);
+  data_queue_.push_back(pc);
+  PushDataQueueWOLock();
   lk.unlock();
-
-  SendPacket(info);
 }
 
 void TrunkLink::CloseConnect(ConnectID cnt) {
@@ -322,7 +354,8 @@ void TrunkLink::ProcessDataToOutlink(
   pi.PacketID = kEmptyPacketID;
   pi.PacketData = buf;
   pi.PacketSize = sizeof(PacketAck);
-  SendPacket(pi);
+  SendPacket(pi);  // Подтверждение шлём без кэширования. Пока отработает кэш -
+                   // придёт новая копия.
 
   // Выдадим данные на внешний линк
   auto link = GetOutLink(cnt);
@@ -339,17 +372,27 @@ void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
   size_t ping = kUndefinedSizeT;
 
   std::unique_lock lk(packet_data_cache_lock_);
-  auto tail = std::remove_if(packet_data_cache_.begin(),
-      packet_data_cache_.end(), [cnt, packet_index](PacketDataCache& item) {
+  auto tails = std::remove_if(data_sent_.begin(), data_sent_.end(),
+      [cnt, packet_index](PacketDataCache& item) {
         return (item.info.CtxID == cnt) && (item.info.PacketID == packet_index);
       });
-  if (tail != packet_data_cache_.end()) {
-    // Такой пакет в кэше есть
+  if (tails != data_sent_.end()) {
+    // Сосчитаем пинг для статистики
     ping = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - tail->FirstSend)
+        std::chrono::steady_clock::now() - tails->FirstSend)
                .count();
-    packet_data_cache_.erase(tail, packet_data_cache_.end());
   }
+  data_sent_.erase(tails, data_sent_.end());
+
+  // Пакет ещё не отправлен, но уже может прийти подтверждение
+  // Такое бывает, если из-за таймаута пакет поставили заново в очередь
+  // на  отправку
+  auto tailq = std::remove_if(data_queue_.begin(), data_queue_.end(),
+      [cnt, packet_index](PacketDataCache& item) {
+        return (item.info.CtxID == cnt) && (item.info.PacketID == packet_index);
+      });
+  data_queue_.erase(tailq, data_queue_.end());
+
   lk.unlock();
 
   if (ping != kUndefinedSizeT) {
@@ -431,22 +474,19 @@ void TrunkLink::OnCacheResend() {
   std::unique_lock lk(packet_data_cache_lock_);
   auto curt = std::chrono::steady_clock::now();
 
-  auto tail =
-      std::remove_if(packet_data_cache_.begin(), packet_data_cache_.end(),
-          [curt](PacketDataCache& item) { return curt > item.Deadline; });
-  if (tail != packet_data_cache_.end()) {
-    deadp = packet_data_cache_.end() - tail;
+  auto tail = std::remove_if(data_sent_.begin(), data_sent_.end(),
+      [curt](PacketDataCache& item) { return curt > item.Deadline; });
+  if (tail != data_sent_.end()) {
+    deadp = data_sent_.end() - tail;
     trlog("-- Removing %u deadline packets\n", (unsigned int)deadp);
-    packet_data_cache_.erase(tail, packet_data_cache_.end());
+    data_sent_.erase(tail, data_sent_.end());
   }
 
-  for (auto it = packet_data_cache_.begin(); it != packet_data_cache_.end();
-       ++it) {
+  for (auto it = data_sent_.begin(); it != data_sent_.end(); ++it) {
     if (curt > it->NextSend) {
-      // Перепосылаем пакет
-      it->NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+      // Перепосылаем пакет. Точнее заталкиваем его в очередь в начало
+      data_queue_.push_front(*it);
       ++resending;
-      SendPacket(it->info);
     }
   }
   lk.unlock();

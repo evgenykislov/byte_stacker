@@ -1,6 +1,7 @@
 #ifndef TRUNKLINK_H
 #define TRUNKLINK_H
 
+#include <deque>
 #include <mutex>
 #include <utility>
 
@@ -26,9 +27,11 @@ enum TrunkCommand : uint32_t {
 
 const size_t kConnectIDSize = 16;
 const unsigned int kResendTimeout = 300;
-const unsigned int kDeadlineTimeout = 2000;
+const unsigned int kDeadlineTimeout = 10000;
 
 const size_t kMaxChunkSize = 800;
+
+const size_t kDefaultSentQueueSize = 100;
 
 struct PacketHeader {
   uint8_t ConnectID[kConnectIDSize];
@@ -213,7 +216,12 @@ class TrunkLink {
 
   bool server_side_;
 
-  std::vector<PacketDataCache> packet_data_cache_;
+  std::deque<PacketDataCache> data_queue_;  //!< Очередь с пакетами данных,
+                                            //!< которые ещё даже не отправлены
+  std::vector<PacketDataCache>
+      data_sent_;  //!< Очередь с пакетами данных, которые уже отсылались
+  // std::atomic_size_t data_sent_max_size_; //!< Максимальный размер очереди в
+  // отсылку. Размер может меняться/адаптироваться
   std::mutex packet_data_cache_lock_;
   boost::asio::steady_timer update_timer_;
 
@@ -249,6 +257,10 @@ class TrunkLink {
   остановил все операции и готов к удалению
   \param cnt идентификатор коннекта */
   void RemoveOutLink(uuids::uuid cnt);
+
+  /*! Продвинем очередь пакетов данных (если есть место). Функция должна
+  вызываться уже под локом packet_data_cache_lock_ */
+  void PushDataQueueWOLock();
 };
 
 
