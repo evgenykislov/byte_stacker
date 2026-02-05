@@ -75,10 +75,6 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   void SetOtherSideWrittenVolume(uint64_t volume);
 
 
-  // TODO Descr
-  // TODO DEBUG-DEBUG
-  void PrintState();
-
  private:
   OutLink() = delete;
   OutLink(const OutLink&) = delete;

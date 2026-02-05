@@ -82,11 +82,6 @@ void TrunkLink::SendLivePacket() {
       trlog("-- Dead connect %s - removing\n",
           uuids::to_string(item.connect_id).c_str());
       item.link->Stop(0, OutLink::kStopNoLive);
-
-      if (curt > (item.deadlink_timeout_ + std::chrono::seconds(10))) {
-        item.link->PrintState();
-      }
-
       continue;
     }
 
@@ -712,18 +707,9 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
 
   auto& ts = trunk_sockets_[info.socket_index];
   auto buf = pkt.PacketData;
-  auto send_start = std::chrono::steady_clock::now();
   ts.socket.async_send_to(boost::asio::buffer(buf.get(), pkt.PacketSize),
       info.client,
-      [buf, send_start](
-          boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {
-        auto in = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - send_start)
-                      .count();
-        if (in > 1000) {
-          trlog("=== Packet send %u ms\n", (unsigned int)in);
-        }
-      });
+      [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
 }
 
 bool TrunkServer::GetPacketConnectID(
