@@ -25,6 +25,7 @@ OutLink::OutLink(boost::asio::ip::tcp::socket&& socket)
       write_processing_(false),
       written_volume_(0),
       otherside_written_volume_(0),
+      read_volume_(0),
       stop_write_chunk_id_(kUndefinedChunkID),
       stop_after_all_write_(false),
       stop_write_immediate_(false),
@@ -91,6 +92,7 @@ OutLink::OutLink(
       write_processing_(false),
       written_volume_(0),
       otherside_written_volume_(0),
+      read_volume_(0),
       stop_write_chunk_id_(kUndefinedChunkID),
       stop_after_all_write_(false),
       stop_write_immediate_(false),
@@ -104,18 +106,19 @@ OutLink::OutLink(
 void OutLink::RequestRead() {
   assert(read_processing_.load());
   // Посчитаем объём недоставленных данных. Может пока повременить с чтением
-  uint64_t w1 = written_volume_;
+  uint64_t rv = read_volume_;
   uint64_t w2 = otherside_written_volume_;
   assert(
-      w2 <= w1);  // Обычно объём уже доставленных данным не больше отправленных
-  if (w2 > w1) {
+      w2 <= rv);  // Обычно объём уже доставленных данным не больше отправленных
+  if (w2 > rv) {
+    // Какая-то суровая логическая ошибка
     read_processing_ = false;
     CancelReadWrite();
     CheckReadyClose();
     return;
   }
 
-  uint64_t dw = w1 - w2;  // Данных в доставке
+  uint64_t dw = rv - w2;  // Данных в доставке
   if (dw > kMaxProcessingDataSize) {
     // Пока подождём
     RequestReadIdle();
@@ -139,6 +142,7 @@ void OutLink::RequestReadProcessing(
   // Вне зависимости от ошибок чтения, если есть вычитанные данные - их
   // обрабатываем
   if (bytes_transferred > 0) {
+    read_volume_ += bytes_transferred;
     assert(hoster_);
     hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
   }

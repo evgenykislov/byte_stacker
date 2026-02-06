@@ -129,6 +129,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   std::atomic_uint64_t
       otherside_written_volume_;  //!< Общий объём записанных данных другой
                                   //!< частью соединения
+  std::atomic_uint64_t read_volume_; //!< Общий объём прочитанных данных
 
   /*! Флаг, что вызов закрытия соединения на хостере уже инициирован.
   Используется только в функции CheckStopReadWrite.

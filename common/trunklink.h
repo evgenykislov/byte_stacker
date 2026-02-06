@@ -26,7 +26,7 @@ enum TrunkCommand : uint32_t {
 
 const size_t kConnectIDSize = 16;
 const unsigned int kResendTimeout = 300;
-const unsigned int kDeadlineTimeout = 2000;
+const unsigned int kDeadlineTimeout = 20000;
 
 const size_t kMaxChunkSize = 800;
 
