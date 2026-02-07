@@ -110,7 +110,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   static const size_t kReadIdleTimeout = 200;
 
   /*! Максимальный объём данных в обработке, байт */
-  static const uint64_t kMaxProcessingDataSize = 2000000;
+  static const uint64_t kMaxProcessingDataSize = 200000;
 
   static const uint32_t kUndefinedChunkID = static_cast<uint32_t>(-1);
 
@@ -126,10 +126,12 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   std::atomic_bool read_processing_;
   std::atomic_bool write_processing_;
   std::atomic_uint64_t
-      written_volume_;  //!< Общий записанный вовне объём данных
+      written_volume_;  //!< Общий записанный вовне объём данных на этой стороне
   std::atomic_uint64_t
       otherside_written_volume_;  //!< Общий объём записанных данных другой
                                   //!< частью соединения
+  std::atomic_uint64_t
+      read_volume_;  //!< Общий прочитанный объём на этой стороне
 
   /*! Флаг, что вызов закрытия соединения на хостере уже инициирован.
   Используется только в функции CheckStopReadWrite.

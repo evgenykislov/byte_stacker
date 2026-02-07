@@ -103,13 +103,18 @@ void TrunkLink::SendLivePacket() {
 }
 
 void TrunkLink::PushDataQueueWOLock() {
-  if (data_sent_.size() > kDefaultSentQueueSize) {
+  if (data_sent_.size() >= kDefaultSentQueueSize) {
     // Очередь отправленных пакетов полная. Ждём
+    return;
+  }
+  if (data_queue_.empty()) {
+    // Очередь пакетов на отправку пустая. Нечего делать
     return;
   }
 
   auto avail = kDefaultSentQueueSize - data_sent_.size();
   assert(avail > 0);
+  trlog("Push %u into sent queue\n", (unsigned int)avail);
   for (size_t i = 0; i < avail; ++i) {
     if (data_queue_.empty()) {
       return;
@@ -119,15 +124,22 @@ void TrunkLink::PushDataQueueWOLock() {
     auto curt = std::chrono::steady_clock::now();
     if (curt > item.Deadline) {
       // Пакет ещё не передаавался, но уже устарел
+      data_queue_.pop_front();
       // TODO TODO TODO Обработать
+      //      trlog("!!!!!!!!!!!!!!!!!!!!!!!!!! Dead packet before sending\n");
+      trlog("-- Dead packet: %s:%u\n",
+          uuids::to_string(item.info.CtxID).c_str(),
+          (unsigned int)item.info.PacketID);
 
-      trlog("!!!!!!!!!!!!!!!!!!!!!!!!!! Dead packet before sending\n");
+      continue;
     }
 
     item.FirstSend = curt;
     item.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
     data_sent_.push_back(item);
     data_queue_.pop_front();
+    trlog("Packet sent: %s:%u\n", uuids::to_string(item.info.CtxID).c_str(),
+        (unsigned int)item.info.PacketID);
 
     SendPacket(item.info);
   }
@@ -159,6 +171,7 @@ void TrunkLink::SendCmdData(
     return;
   }
 
+
   // Сформируем сам пакет
   auto buf = GetBuffer();
   auto pkt = (PacketData*)(buf.get());
@@ -184,6 +197,8 @@ void TrunkLink::SendCmdData(
 
   std::unique_lock<std::mutex> lk(packet_data_cache_lock_);
   data_queue_.push_back(pc);
+  trlog("Add packet to queue: %s:%u\n", uuids::to_string(cnt).c_str(),
+      (unsigned int)pkt_index);
   PushDataQueueWOLock();
   lk.unlock();
 }
@@ -368,6 +383,9 @@ void TrunkLink::ProcessDataToOutlink(
 }
 
 void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
+  trlog("Delete packet - Ack: %s:%u\n", uuids::to_string(cnt).c_str(),
+      (unsigned int)packet_index);
+
   // TODO IMPLEMENT
   size_t ping = kUndefinedSizeT;
 
@@ -392,6 +410,8 @@ void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
         return (item.info.CtxID == cnt) && (item.info.PacketID == packet_index);
       });
   data_queue_.erase(tailq, data_queue_.end());
+
+  PushDataQueueWOLock();
 
   lk.unlock();
 
@@ -482,12 +502,19 @@ void TrunkLink::OnCacheResend() {
     data_sent_.erase(tail, data_sent_.end());
   }
 
-  for (auto it = data_sent_.begin(); it != data_sent_.end(); ++it) {
+  // Перепосылка пакетов
+  for (auto it = data_sent_.begin(); it != data_sent_.end(); /* noop */) {
     if (curt > it->NextSend) {
       // Перепосылаем пакет. Точнее заталкиваем его в очередь в начало
       data_queue_.push_front(*it);
       ++resending;
+      it = data_sent_.erase(it);
+      trlog("Packet resend: %s:%u\n", uuids::to_string(it->info.CtxID).c_str(),
+          (unsigned int)it->info.PacketID);
+      continue;
     }
+
+    ++it;
   }
   lk.unlock();
 
