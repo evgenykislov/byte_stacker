@@ -200,7 +200,8 @@ class TrunkLink {
 
   static const size_t kUpdateTick = 100;
   static const size_t kLiveUpdateTick = 300;
-  static const size_t kDeadLinkTimeout = 5000;
+  static const size_t kDeadLinkTimeout = 20000;
+  static const size_t kForceRemoveLinkTimeout = 5000;
   static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 
   bool server_side_;
@@ -225,6 +226,10 @@ class TrunkLink {
   std::chrono::steady_clock::time_point
       next_live_update_;  //!< Время, когда следующий раз посылать live-пакеты
 
+
+  // TODO Descr
+  std::ofstream error_log_;
+  std::mutex error_log_lock_;
 
   // TODO Descr + kBadPacketIndex
   uint32_t GetNextPacketIndex(ConnectID cnt);

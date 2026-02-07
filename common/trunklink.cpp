@@ -1,11 +1,17 @@
 #include "trunklink.h"
 
 #include <chrono>
+#include <fstream>
 #include <iostream>
 
 #include "trace.h"
 
 namespace bai = boost::asio::ip;
+
+#ifdef CONNECT_LOG
+const char kTrunkErrorLog[] = "/var/log/stacker/trunk_error.txt";
+#endif
+
 
 // TODO Descr
 void CopyConnectID(uint8_t dest[16], const uuids::uuid& src) {
@@ -27,6 +33,10 @@ TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side)
       trunk_packet_fault_{0} {
   std::chrono::milliseconds intrv{kLiveUpdateTick};
   next_live_update_ = std::chrono::steady_clock::now() + intrv;
+
+#ifdef CONNECT_LOG
+  error_log_.open(kTrunkErrorLog, std::ios_base::trunc);
+#endif
 
   RequestUpdate();
 }
@@ -78,9 +88,16 @@ void TrunkLink::SendLivePacket() {
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     // Сначала удалим мёртвые соединения
+    std::chrono::milliseconds forceto{kForceRemoveLinkTimeout};
+    if (curt > (item.deadlink_timeout_ + forceto)) {
+      error_log_ << timemark(true) << ": force remove "
+                 << uuids::to_string(item.connect_id) << " outlink"
+                 << std::endl;
+      item.link.reset();
+    }
     if (curt > item.deadlink_timeout_) {
-      trlog("-- Dead connect %s - removing\n",
-          uuids::to_string(item.connect_id).c_str());
+      //      trlog("-- Dead connect %s - removing\n",
+      //          uuids::to_string(item.connect_id).c_str());
       item.link->Stop(0, OutLink::kStopNoLive);
       continue;
     }

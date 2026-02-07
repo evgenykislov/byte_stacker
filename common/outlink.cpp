@@ -5,6 +5,11 @@
 #include "trace.h"
 #include "trunklink.h"
 
+
+#ifdef CONNECT_LOG
+const char kLogPrefix[] = "/var/log/stacker/cnt_";
+#endif
+
 std::shared_ptr<OutLink> OutLink::CreateOutLink(
     boost::asio::ip::tcp::socket&& socket) {
   return std::shared_ptr<OutLink>(new OutLink(std::move(socket)));
@@ -112,6 +117,7 @@ void OutLink::RequestRead() {
       w2 <= rv);  // Обычно объём уже доставленных данным не больше отправленных
   if (w2 > rv) {
     // Какая-то суровая логическая ошибка
+    LogWrite(": CLOSE: Volume logic error\n");
     read_processing_ = false;
     CancelReadWrite();
     CheckReadyClose();
@@ -272,21 +278,16 @@ void OutLink::RequestWrite() {
 void OutLink::RequestWriteProcessing(
     const boost::system::error_code& error, std::size_t bytes_transferred) {
   // Проверка на всякие ошибки
-  if (error) {
-    // TODO Process Error
-    trlog("-- Writing outlink error: %s\n", error.message().c_str());
-    write_processing_ = false;
-  }
-  if (bytes_transferred == 0) {
-    // TODO Error???
-    trlog("-- Writing outlink zero-error\n");
+  if (error || bytes_transferred == 0) {
+    LogWrite(": CLOSE: Write operation returns error\n");
     write_processing_ = false;
   }
   if (bytes_transferred > network_write_buffer_.size()) {
     assert(false);
-    // TODO ERRRORR
+    LogWrite(": CLOSE: Writes over-more data\n");
     write_processing_ = false;
   }
+
   if (!write_processing_) {
     socket_.cancel();
     CheckReadyClose();
@@ -312,17 +313,18 @@ void OutLink::CheckReadyCloseProcessing() {
     // Готовый к вызову удалителя
     if (!close_invoked_.test_and_set()) {
       // Ранее закрытие ещё не вызывалось
-      // Вызываем
-      boost::system::error_code error;
-      socket_.shutdown(boost::asio::socket_base::shutdown_both, error);
-      if (error) {
-        trlog("Socket shutdown returns error: %s\n", error.message().c_str());
+      if (socket_.is_open()) {
+        boost::system::error_code error;
+        socket_.shutdown(boost::asio::socket_base::shutdown_both, error);
+        if (error) {
+          trlog("Socket shutdown returns error: %s\n", error.message().c_str());
+        }
+        socket_.close(error);
+        if (error) {
+          trlog("Socket close returns error: %s\n", error.message().c_str());
+        }
+        assert(!socket_.is_open());
       }
-      socket_.close(error);
-      if (error) {
-        trlog("Socket close returns error: %s\n", error.message().c_str());
-      }
-      assert(!socket_.is_open());
       hoster_->CloseConnect(selfid_);
     }
   }
@@ -332,7 +334,8 @@ void OutLink::ResolverProcessing(const boost::system::error_code& err,
     boost::asio::ip::tcp::resolver::results_type results) {
   if (err) {
     // Неизвестный адрес, непонятно куда подключаться
-    // Завершаем работу коннета
+    // Завершаем работу коннекта
+    LogWrite(": CLOSE: can't resolve address\n");
     CheckReadyClose();
     return;
   }
@@ -356,14 +359,20 @@ void OutLink::Run(TrunkLink* hoster, ConnectID cnt) {
   hoster_ = hoster;
   selfid_ = cnt;
 
+#ifdef CONNECT_LOG
+  std::string fn = kLogPrefix;
+  fn += uuids::to_string(cnt);
+  log_.open(fn, std::ios_base::trunc);  // Не лочится, т.к. потокобезопасная
+#endif
+
   if (socket_.is_open()) {
     read_processing_ = true;
     RequestRead();
     write_processing_ = true;
     RequestWrite();
+    LogWrite("Run outlink by opened socket\n");
   } else {
-    // TRACE
-    trlog("-- Resolving host %s:%s\n", host_.c_str(), service_.c_str());
+    LogWrite("Run outlink for %s:%s\n", host_.c_str(), service_.c_str());
 
     auto selfptr = shared_from_this();
     resolver_.async_resolve(host_, service_,
@@ -408,6 +417,21 @@ void OutLink::SendData(uint32_t chunk_id, const void* data, size_t data_size) {
 }
 
 void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
+  switch (reason) {
+    case kStopReleaseCommand:
+      // Корректное завершение, всё ок
+      LogWrite(": Close successfull\n");
+      break;
+    case kStopNoLive:
+      LogWrite(": CLOSE: no-live\n");
+      break;
+    case kStopChunkAbsent:
+      LogWrite(": CLOSE: chunk absent\n");
+      break;
+    default:
+      LogWrite(": CLOSE: unknown reason\n");
+  }
+
   std::unique_lock lk(write_chunks_lock_);
   if (stop_write_chunk_id_ != kUndefinedChunkID) {
     // Остановка уже инициирована

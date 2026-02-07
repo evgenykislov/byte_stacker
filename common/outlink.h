@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <fstream>
 #include <list>
 #include <map>
 #include <memory>
@@ -12,6 +13,7 @@
 #include <boost/asio.hpp>
 
 #include "../common/data.h"
+#include "../common/trace.h"
 
 struct AddressPortPoint {
   std::string Address;
@@ -49,6 +51,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
     kStopChunkAbsent  // Нет чанка с данными
   };
 
+
+  // TODO Сделать потокобезопасной
   /*! Запуск подключения в работу. Функция неблокирующая
   \param hoster указатель на "хостера", который работает со всеми подключениями.
   Указатель должен быть корректным, пока идёт работе подлключения
@@ -129,7 +133,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   std::atomic_uint64_t
       otherside_written_volume_;  //!< Общий объём записанных данных другой
                                   //!< частью соединения
-  std::atomic_uint64_t read_volume_; //!< Общий объём прочитанных данных
+  std::atomic_uint64_t read_volume_;  //!< Общий объём прочитанных данных
 
   /*! Флаг, что вызов закрытия соединения на хостере уже инициирован.
   Используется только в функции CheckStopReadWrite.
@@ -174,6 +178,12 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   /*! Таймер для ожидания на чтение, чтобы не переполнять входную очередь */
   boost::asio::steady_timer read_idle_timer_;
 
+  /*! Файл и блокировка для логирования операций по коннекту */
+#ifdef CONNECT_LOG
+  std::ofstream log_;
+  std::mutex log_lock_;
+#endif
+
   // TODO Descr
   void FillNetworkBuffer();
 
@@ -217,6 +227,26 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   /*! Функция для обработки результатов резолвинга адресов */
   void ResolverProcessing(const boost::system::error_code& err,
       boost::asio::ip::tcp::resolver::results_type results);
+
+  // TODO Descr
+  template <typename... Types>
+  void LogWrite(const char* format, Types... args) {
+#ifdef CONNECT_LOG
+    std::lock_guard lk(log_lock_);
+    if (!log_) {
+      return;
+    }
+    log_ << timemark() << ": ";
+    const size_t kBufSize = 1000;
+    char buf[kBufSize];
+    if (std::snprintf(buf, kBufSize, format, args...) >= 0) {
+      log_ << buf;
+    } else {
+      log_ << "ERROR: memory overflow" << std::endl;
+    }
+    log_.flush();
+#endif
+  }
 };
 
 
