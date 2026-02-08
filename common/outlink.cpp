@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include "inttypes.h"
+
 #include "trace.h"
 #include "trunklink.h"
 
@@ -149,6 +151,7 @@ void OutLink::RequestReadProcessing(
   // обрабатываем
   if (bytes_transferred > 0) {
     read_volume_ += bytes_transferred;
+    LogWrite("Read %" PRIu64 " bytes", read_volume_.load());
     assert(hoster_);
     hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
   }
@@ -295,6 +298,7 @@ void OutLink::RequestWriteProcessing(
   }
 
   written_volume_ += bytes_transferred;
+  LogWrite("<- Written %" PRIu64 " bytes", written_volume_.load());
   network_write_buffer_.erase(network_write_buffer_.begin(),
       network_write_buffer_.begin() + bytes_transferred);
   RequestWrite();
@@ -472,5 +476,9 @@ void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
 uint64_t OutLink::GetWrittenVolume() { return written_volume_; }
 
 void OutLink::SetOtherSideWrittenVolume(uint64_t volume) {
-  otherside_written_volume_ = volume;
+  auto prev = otherside_written_volume_.exchange(volume);
+  if (prev != volume) {
+    LogWrite(
+        "--- Delivered %" PRIu64 " bytes", otherside_written_volume_.load());
+  }
 }

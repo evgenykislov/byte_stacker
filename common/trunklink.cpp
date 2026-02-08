@@ -405,6 +405,7 @@ void TrunkLink::ProcessLive(uuids::uuid cnt, uint64_t written) {
     if (item.connect_id == cnt) {
       std::chrono::milliseconds intrv{kDeadLinkTimeout};
       item.deadlink_timeout_ = std::chrono::steady_clock::now() + intrv;
+      item.link->SetOtherSideWrittenVolume(written);
     }
   }
 }

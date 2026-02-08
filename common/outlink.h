@@ -74,8 +74,9 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   \return общий записанный объём, байт */
   uint64_t GetWrittenVolume();
 
-  /*! Сохраняет объём данных, записанный парным/другим концом соединения
-  \param volume объём записанных данных на другой стороне, байт */
+  /*! Сохраняет объём данных, записанный парным/другим концом соединения. Вызов
+  функции будет "спамиться" с одинаковыми значениями \param volume объём
+  записанных данных на другой стороне, байт */
   void SetOtherSideWrittenVolume(uint64_t volume);
 
  private:
