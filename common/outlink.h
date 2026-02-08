@@ -240,7 +240,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
     const size_t kBufSize = 1000;
     char buf[kBufSize];
     if (std::snprintf(buf, kBufSize, format, args...) >= 0) {
-      log_ << buf;
+      log_ << buf << std::endl;
     } else {
       log_ << "ERROR: memory overflow" << std::endl;
     }

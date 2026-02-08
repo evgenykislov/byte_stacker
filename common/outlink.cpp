@@ -420,10 +420,10 @@ void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
   switch (reason) {
     case kStopReleaseCommand:
       // Корректное завершение, всё ок
-      LogWrite(": Close successfull\n");
+      LogWrite("Closing successfull\n");
       break;
     case kStopNoLive:
-      LogWrite(": CLOSE: no-live\n");
+      LogWrite("FORCE CLOSE: no-live\n");
       break;
     case kStopChunkAbsent:
       LogWrite(": CLOSE: chunk absent\n");
@@ -433,11 +433,14 @@ void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
   }
 
   std::unique_lock lk(write_chunks_lock_);
-  if (stop_write_chunk_id_ != kUndefinedChunkID) {
-    // Остановка уже инициирована
+  if (stop_write_chunk_id_ != kUndefinedChunkID &&
+      stop_write_chunk_id_ < stop_chunk) {
+    // Остановка уже инициирована и указан более ранний чанк
     return;
   }
 
+  // Инициировали остановку
+  // Или задали новые параметры остановки: напораньше
   if (stop_chunk <= next_write_chunk_id_) {
     // Фактически уже всё передали. Возможно даже и с опозданием.
     // В любом случае, данных больше не планируется
@@ -454,7 +457,8 @@ void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
 
   // Так, планируются ещё данные к передаче
   assert(stop_chunk > next_write_chunk_id_);
-  //  trlog("Outlink close on near future\n");
+  LogWrite("  close will be  later: needs send %u packets",
+      stop_chunk - next_write_chunk_id_);
   stop_write_chunk_id_ = stop_chunk;
   for (auto it = write_chunks_.begin(); it != write_chunks_.end(); /* noop */) {
     if (it->first >= stop_chunk) {
