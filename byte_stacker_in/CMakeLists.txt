@@ -9,7 +9,11 @@ project (byte_stacker_in LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+option(GEN_COVERAGE "Generate coverage data while running" OFF)
 option(CONNECT_LOG "Writing log for connect operations" OFF)
+
 
 set(SOURCE_FILES
   "byte_stacker_in.cpp"
@@ -38,6 +42,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system)
 
 if (CONNECT_LOG)
   target_compile_definitions(${PROJECT_NAME} PRIVATE -DCONNECT_LOG)
+endif()
+
+if (GEN_COVERAGE)
+  set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../cmake)
+  include(CodeCoverage)
+  append_coverage_compiler_flags()
 endif()
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)

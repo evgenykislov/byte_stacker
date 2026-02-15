@@ -6,6 +6,11 @@ project (byte_stacker_out LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+option(GEN_COVERAGE "Generate coverage data while running" OFF)
+
+
 set(SOURCE_FILES
   "byte_stacker_out.cpp"
   "../common/outlink.cpp"
@@ -29,3 +34,9 @@ add_executable (${PROJECT_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 include_directories(${PROJECT_NAME} "../common")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system)
+
+if (GEN_COVERAGE)
+  set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../cmake)
+  include(CodeCoverage)
+  append_coverage_compiler_flags()
+endif()
