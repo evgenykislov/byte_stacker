@@ -7,7 +7,7 @@ cmake --build build_coverage
 
 # run tests
 pushd build_coverage/bin
-./tests
+./tests_code
 popd
 
 # Generate report
