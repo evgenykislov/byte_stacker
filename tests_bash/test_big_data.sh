@@ -5,7 +5,7 @@
 # Параметры (должны быть установлены вызывающим окружением):
 # BIN_PATH - путь к исполняемым файлам
 
-TEST_NAME="Передача большого блока"
+BTEST_TEST_NAME="Передача большого блока"
 
 PROC_IN=-1
 PROC_OUT=-1
@@ -79,6 +79,4 @@ function test() {
     echo "Files are different"
     return 1
   fi
-
-
 }
