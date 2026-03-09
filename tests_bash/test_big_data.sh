@@ -16,6 +16,11 @@
 # Название теста
 BTEST_TEST_NAME="Передача большого блока"
 
+if [[ -z "${BIN_PATH}" ]]; then
+  echo "Test needs BIN_PATH variable point to executable files"
+  exit 1
+fi
+
 
 source ./fixture_direct.sh
 
