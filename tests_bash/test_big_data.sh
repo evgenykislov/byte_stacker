@@ -18,21 +18,27 @@ BTEST_TEST_NAME="Передача большого блока"
 
 
 source ./fixture_direct.sh
-source ./generate_file.sh
 
 
 function test() {
   # Файл с полученными данными
   RECEIVER=-1
-  SOURCE_FILE=$(generatefile 5000000)
-  DESTINATION_FILE=$(mktemp)
   RES=0
-  
-  nc -4 -l 127.0.0.2 50001 > ${DESTINATION_FILE} < /dev/null &
-  RECEIVER=$!
-  if ! ps -p ${RECEIVER} > /dev/null 2>&1 ; then
-    echo "receiver hasn't run"
+  SOURCE_FILE=$(mktemp)
+  DESTINATION_FILE=$(mktemp)
+
+  if ! ${BIN_PATH}/file_generator --size=10000000 --file=${SOURCE_FILE} ; then
+    echo "can't generate test file"
 	RES=1
+  fi
+
+  if [[ ${RES} == 0 ]]; then
+    nc -4 -l 127.0.0.2 50001 > ${DESTINATION_FILE} < /dev/null &
+	RECEIVER=$!
+    if ! ps -p ${RECEIVER} > /dev/null 2>&1 ; then
+      echo "receiver hasn't run"
+	  RES=1
+    fi
   fi
 
   if [[ ${RES} == 0 ]]; then

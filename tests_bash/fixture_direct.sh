@@ -54,29 +54,3 @@ function teardown() {
   fi
 }
 
-
-function test() {
-  nc -4 -l 127.0.0.2 50001 > ${RES_FILE} < /dev/null &
-  RECEIVER=$!
-  if ! ps -p ${RECEIVER} > /dev/null 2>&1 ; then
-    echo "receiver hasn't run"
-    return 1
-  fi
-
-  nc -4 -N 127.0.0.2 30001 < "${BIN_PATH}/byte_stacker_in"
-
-  timeout 5 tail --pid=${RECEIVER} -f /dev/null
-
-  if ps -p ${RECEIVER} > /dev/null 2>&1 ; then
-    echo "receiver hasn't stopped after receiving data"
-    return 1
-  fi
-  RECEIVER=-1
-
-  echo "Transferred $(stat -c %s "${RES_FILE}") bytes"
-
-  if ! cmp -s "${BIN_PATH}/byte_stacker_in" ${RES_FILE} >/dev/null ; then
-    echo "Files are different"
-    return 1
-  fi
-}
