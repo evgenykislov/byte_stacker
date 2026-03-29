@@ -104,3 +104,54 @@ bool ParseTrunkPoint(std::string arg_wo_prefix,
   }
   return false;
 }
+
+
+bool CheckPrefix(
+    const std::string prefix, std::string arg, std::string& value) {
+  if (arg.substr(0, prefix.size()) == prefix) {
+    value = arg.substr(prefix.size());
+    return true;
+  }
+  return false;
+}
+
+
+bool ParseIpPort(std::string ipport, std::string& address, uint16_t& port) {
+  auto p1 = ipport.find(':');
+  if (p1 == std::string::npos || p1 == 0) {
+    return false;
+  }
+
+  address = ipport.substr(0, p1);
+  auto sport = ipport.substr(p1 + 1);
+  try {
+    std::size_t s;
+    port = (unsigned short)std::stoul(sport, &s);
+    if (s != sport.size()) {
+      throw std::runtime_error("bad format of port");
+    }
+
+    return true;
+  } catch (std::exception&) {
+    return false;
+  }
+  return false;
+}
+
+
+bool ParseIpPort(std::string ipport, boost::asio::ip::tcp::endpoint& point) {
+  std::string adr;
+  uint16_t port;
+  if (!ParseIpPort(ipport, adr, port)) {
+    return false;
+  }
+
+  try {
+    point.address(boost::asio::ip::make_address_v4(adr));
+    point.port(port);
+    return true;
+  } catch (std::exception&) {
+    return false;
+  }
+  return false;
+}
