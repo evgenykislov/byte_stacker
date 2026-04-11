@@ -94,7 +94,10 @@ void TrunkLink::SendLivePacket() {
                  << uuids::to_string(item.connect_id) << " outlink"
                  << std::endl;
       item.link.reset();
+      continue;
     }
+
+    assert(item.link.get());
     if (curt > item.deadlink_timeout_) {
       //      trlog("-- Dead connect %s - removing\n",
       //          uuids::to_string(item.connect_id).c_str());
