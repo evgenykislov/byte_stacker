@@ -45,6 +45,7 @@
 #include <future>
 
 #include "fixture_direct_pipe.h"
+#include "trace.h"
 
 using namespace boost::asio;
 using namespace std::chrono_literals;
@@ -129,6 +130,7 @@ TEST_F(DirectPipe, ConnectionClosePropagation) {
   std::promise<void> connect_promise;
   auto connect_future = connect_promise.get_future();
 
+  trlog(" Starting connect to address_from\n");
   client_socket.async_connect(
       client_endpoint, [&](const boost::system::error_code& error) {
         if (error) {
@@ -136,12 +138,14 @@ TEST_F(DirectPipe, ConnectionClosePropagation) {
               std::make_exception_ptr(std::runtime_error(
                   "Connect to address_from failed: " + error.message())));
         } else {
+          trlog("   Connected to address_from\n");
           connect_promise.set_value();
         }
       });
 
   // Ожидаем подключения к address_from
   auto connect_status = connect_future.wait_for(2s);
+  trlog("   Connected to address_from: got signal\n");
   ASSERT_EQ(connect_status, std::future_status::ready)
       << "Failed to connect to address_from (" << address_from_host << ":"
       << address_from_port << ") within 2 seconds";
@@ -161,8 +165,13 @@ TEST_F(DirectPipe, ConnectionClosePropagation) {
   ASSERT_TRUE(server_accepted)
       << "Server did not accept connection on address_to";
 
+  trlog(" Accepter from address_to\n");
+
   // Шаг 4: Разрываем клиентское соединение с address_from
   client_socket.close(ec);
+
+  trlog(" Connection closed from client side\n");
+
   ASSERT_FALSE(ec) << "Failed to close client connection: " << ec.message();
 
   // Шаг 5: Проверяем, что соединение на address_to тоже разорвалось
@@ -176,6 +185,8 @@ TEST_F(DirectPipe, ConnectionClosePropagation) {
 
   ASSERT_TRUE(server_disconnected)
       << "Server connection was not closed after client disconnected";
+
+  trlog(" -- Connection closed from server side\n");
 
   // Очистка
   accepted_socket->close(ec);

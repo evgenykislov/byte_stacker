@@ -18,13 +18,14 @@ set(SOURCES_FILES
 
 set(HEADERS_FILES
   "fixture_direct_pipe.h"
+  "../common/trace.h"
 )
 
 find_package(GTest CONFIG REQUIRED)
 
 add_executable(${PROJECT_NAME} ${HEADERS_FILES} ${SOURCES_FILES})
 
-#target_include_directories(${PROJECT_NAME} PRIVATE "../common")
+target_include_directories(${PROJECT_NAME} PRIVATE "../common")
 
 target_link_libraries(${PROJECT_NAME} GTest::gtest_main)
 
