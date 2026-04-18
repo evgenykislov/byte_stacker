@@ -12,9 +12,9 @@ PROC_OUT=-1
 
 
 function setup() {
-  ${BIN_PATH}/byte_stacker_in --local1=127.0.0.2:30001 --local1=127.0.0.2:30002 --trunk=127.0.0.2:40001 &
+  ${BIN_PATH}/byte_stacker_in --local1=127.0.0.2:30001 --local2=127.0.0.2:30002 --trunk=127.0.0.2:40001 &
   PROC_IN=$!
-  ${BIN_PATH}/byte_stacker_out --external1=127.0.0.2:50001 --external1=127.0.0.2:50002 --trunk=127.0.0.2:40001 &
+  ${BIN_PATH}/byte_stacker_out --external1=127.0.0.2:50001 --external2=127.0.0.2:50002 --trunk=127.0.0.2:40001 &
   PROC_OUT=$!
 
   sleep 0.5
