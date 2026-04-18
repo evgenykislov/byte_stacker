@@ -484,7 +484,7 @@ void TrunkLink::OnCacheResend() {
 
 
 void TrunkLink::RemoveOutLink(uuids::uuid cnt) {
-  trlog("-- Remove outlink %s\n", uuids::to_string(cnt).c_str());
+  // trlog("-- Remove outlink %s\n", uuids::to_string(cnt).c_str());
   std::lock_guard lk(out_links_lock_);
   auto tail = std::remove_if(out_links_.begin(), out_links_.end(),
       [cnt](OutLinkInfo info) { return cnt == info.connect_id; });

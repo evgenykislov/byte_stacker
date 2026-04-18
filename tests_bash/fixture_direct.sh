@@ -1,24 +1,20 @@
 #!/bin/bash
 
-# Тестовый скрипт для проверки передачи большого блока данных
-# В качестве блока данных используется файл с программой byte_stacker_in
+# Функции запуска и останова программ byte_stacker
+# Прямое подключение, без обработчиков. На 2 точки:
+# 127.0.0.2:30001 -> 127.0.0.2:50001
+# 127.0.0.2:30002 -> 127.0.0.2:50002
 # Параметры (должны быть установлены вызывающим окружением):
 # BIN_PATH - путь к исполняемым файлам
 
-BTEST_TEST_NAME="Передача большого блока"
-
 PROC_IN=-1
 PROC_OUT=-1
-RECEIVER=-1
-
-# Файл с полученными данными
-RES_FILE=$(mktemp)
 
 
 function setup() {
-  ${BIN_PATH}/byte_stacker_in --local1=127.0.0.2:30001 --trunk=127.0.0.2:40001 &
+  ${BIN_PATH}/byte_stacker_in --local1=127.0.0.2:30001 --local2=127.0.0.2:30002 --trunk=127.0.0.2:40001 &
   PROC_IN=$!
-  ${BIN_PATH}/byte_stacker_out --external1=127.0.0.2:50001 --trunk=127.0.0.2:40001 &
+  ${BIN_PATH}/byte_stacker_out --external1=127.0.0.2:50001 --external2=127.0.0.2:50002 --trunk=127.0.0.2:40001 &
   PROC_OUT=$!
 
   sleep 0.5
@@ -45,12 +41,6 @@ function teardown() {
   fi
   if [[ ${PROC_OUT} != -1 ]]; then
     kill ${PROC_OUT}
-  fi
-  if [[ ${RECEIVER} != -1 ]]; then
-    kill ${RECEIVER}
-  fi
-  if [[ ${RES_FILE} != "" ]]; then
-    rm -f ${RES_FILE}
   fi
 }
 

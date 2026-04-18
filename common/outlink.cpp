@@ -198,10 +198,10 @@ void OutLink::RequestConnect() {
   }
 
   // TRACE
-  auto ep = resolved_points_.front();
-  trlog(
-      "-- Try connect to %s:%u\n", ep.address().to_string().c_str(), ep.port());
-  std::cout.flush();
+  //  auto ep = resolved_points_.front();
+  //  trlog(
+  //      "-- Try connect to %s:%u\n", ep.address().to_string().c_str(),
+  //      ep.port());
 
   auto selfptr = shared_from_this();
   socket_.async_connect(resolved_points_.front(),
@@ -219,8 +219,7 @@ void OutLink::RequestConnectProcessing(const boost::system::error_code& error) {
     RequestConnect();
   } else {
     // TRACE
-    trlog("-- Connected. Start reading/writing\n");
-    std::cout.flush();
+    //    trlog("-- Connected. Start reading/writing\n");
 
     read_processing_ = true;
     RequestRead();

@@ -37,7 +37,8 @@ void PrintHelp() {
 \param id идентификатор точки подключения (может быть несколько подключений для
 одной и той-же точки)
 \param socket подключенный tcp сокет новоко соединения */
-void RegisterConnect(TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
+void RegisterNewConnection(
+    TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
   ConnectID cnt;
   assert(cnt.is_nil());
 
@@ -63,7 +64,7 @@ void RequestAccept(boost::asio::io_context& ctx,
           return;
         }
 
-        RegisterConnect(trc, id, std::move(*socket.get()));
+        RegisterNewConnection(trc, id, std::move(*socket.get()));
         RequestAccept(ctx, acp, trc, id);
       });
 }
