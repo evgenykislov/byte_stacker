@@ -27,6 +27,8 @@ source ./fixture_direct.sh
 
 function test() {
   # Файл с полученными данными
+  SENDER1=-1
+  SENDER2=-1
   RECEIVER1=-1
   RECEIVER2=-1
   RES=0
@@ -60,8 +62,16 @@ function test() {
   fi
 
   if [[ ${RES} == 0 ]]; then
-    nc -4 -N 127.0.0.2 30001 < ${SOURCE1_FILE}
-    nc -4 -N 127.0.0.2 30002 < ${SOURCE2_FILE}
+    nc -4 -N 127.0.0.2 30001 < ${SOURCE1_FILE} &
+	SENDER1=$!
+    nc -4 -N 127.0.0.2 30002 < ${SOURCE2_FILE} &
+	SENDER2=$!
+	
+	# Ожидаем завершения передачи со стороны утилит nc
+    timeout 20 tail --pid=${SENDER1} -f /dev/null
+    timeout 20 tail --pid=${SENDER2} -f /dev/null
+	
+	# Ожидаем завершения приёма
     timeout 5 tail --pid=${RECEIVER1} -f /dev/null
     timeout 5 tail --pid=${RECEIVER2} -f /dev/null
 
