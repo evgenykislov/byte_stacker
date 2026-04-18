@@ -321,7 +321,7 @@ class TrunkClient: public TrunkLink {
 class TrunkServer: public TrunkLink {
  public:
   TrunkServer(boost::asio::io_context& ctx,
-      const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
+      const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
       std::function<std::shared_ptr<OutLink>(PointID)> link_fabric);
   virtual ~TrunkServer();
 
@@ -344,6 +344,7 @@ class TrunkServer: public TrunkLink {
   /*! Сокеты для транковой связи. Массив инициализируется в конструкторе и в
   дальнейшем не меняется. Сокеты можно адресовать по индексу в массиве */
   struct ServerSocket {
+    size_t trunk_id_;
     boost::asio::ip::udp::socket socket;
     std::shared_ptr<TrunkServer::PacketBuffer> buffer;
     boost::asio::ip::udp::endpoint client_holder;

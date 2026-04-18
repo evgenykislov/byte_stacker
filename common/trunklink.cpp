@@ -630,11 +630,13 @@ void TrunkClient::ProcessAckConnectData(
 
 
 TrunkServer::TrunkServer(boost::asio::io_context& ctx,
-    const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
+    const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
     std::function<std::shared_ptr<OutLink>(PointID)> link_fabric)
     : TrunkLink(ctx, true), asio_context_(ctx), link_fabric_(link_fabric) {
-  for (auto& p : trpoints) {
-    trunk_sockets_.emplace_back(ServerSocket{{ctx, p}, GetBuffer()});
+  for (size_t i = 0; i < trpoints.size(); ++i) {
+    for (auto& p : trpoints[i]) {
+      trunk_sockets_.emplace_back(ServerSocket{i, {ctx, p}, GetBuffer()});
+    }
   }
 
   for (size_t index = 0; index < trunk_sockets_.size(); ++index) {

@@ -22,7 +22,7 @@ const int kInformationInterval = 10000;
 void PrintHelp() {
   std::cout << "byte_stacker_out" << std::endl;
   std::cout << "byte_stacker_out --external1=ip:port [--external2=ip:port ...] "
-               "--trunk=ip:port1,port2..."
+               "--trunk=ip:port1,port2... [--trunk=ip:port1,port2...]"
             << std::endl;
 }
 
@@ -34,7 +34,8 @@ int main(int argc, char** argv) {
   }
 
   std::map<PointID, AddressPortPoint> eps;  //!< Внешние точки коннекта
-  std::vector<bai::udp::endpoint> trp;  //!< Транковые точки для обмена данными
+  std::vector<std::vector<bai::udp::endpoint>>
+      trp;  //!< Транковые точки для обмена данными
 
   for (int i = 1; i < argc; ++i) {
     std::string a(argv[i]);
@@ -49,9 +50,11 @@ int main(int argc, char** argv) {
         return 2;
       }
     } else if (a.starts_with(kTrunkPrefix)) {
-      if (!ParseTrunkPoint(a.substr(kTrunkPrefix.size()), trp)) {
+      std::vector<bai::udp::endpoint> st;  // Описатель отдного транка
+      if (!ParseTrunkPoint(a.substr(kTrunkPrefix.size()), st)) {
         return 2;
       }
+      trp.push_back(st);
     }
   }
 
