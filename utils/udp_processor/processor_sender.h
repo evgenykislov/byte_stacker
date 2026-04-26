@@ -13,16 +13,16 @@ class ProcessorSender: public Processor {
   /*! Конструирование
   \param socket отправлять пакеты через заданный сокет
   \param point отправлять пакеты на заданную точку */
-  ProcessorSender(boost::asio::io_context& ctx, boost::asio::ip::udp::socket& socket,
-      boost::asio::ip::udp::endpoint point): Processor(ctx, nullptr), socket_(socket), point_(point) {
-  }
+  ProcessorSender(boost::asio::ip::udp::socket& socket,
+      boost::asio::ip::udp::endpoint point)
+      : Processor(nullptr), socket_(socket), point_(point) {}
 
   /*! Отправить пакет в обработку */
   virtual void Push(PacketInfoPtr packet) {
     socket_.async_send_to(boost::asio::buffer(packet->data_, packet->size_),
         point_,
-        [packet](boost::system::error_code e /*ec*/, std::size_t /*bytes_sent*/) {
-        });
+        [packet](
+            boost::system::error_code e /*ec*/, std::size_t /*bytes_sent*/) {});
   }
 
  private:
@@ -30,4 +30,4 @@ class ProcessorSender: public Processor {
   boost::asio::ip::udp::endpoint point_;
 };
 
-#endif // PROCESSOR_SENDER_H
+#endif  // PROCESSOR_SENDER_H

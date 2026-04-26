@@ -11,12 +11,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(SOURCE_FILES
   "udp_processor.cpp"
+  "processor.cpp"
   "../../common/parser.cpp"
 )
 
 set(HEADER_FILES
   "processor.h"
   "processor_sender.h"
+  "processor_skip.h"
   "../../common/parser.h"
 )
 

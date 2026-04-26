@@ -3,10 +3,22 @@
 # Фикстура для запуска канала через обработчик пакетов
 # Параметры (должны быть установлены вызывающим окружением):
 # BIN_PATH - путь к исполняемым файлам
+# PROCESSORS - список обработчиков, через пробел, как в командной строке. Допустимо не указывать обработчики
 
 PROC_IN=-1
 PROC_OUT=-1
 PROC_PROCESSOR=-1
+
+
+if [[ -z "${BIN_PATH}" ]]; then
+  echo "Test needs BIN_PATH variable with path to executable files"
+  exit 1
+fi
+
+if [[ ! -v "PROCESSORS" ]]; then
+  PROCESSORS=""
+fi
+
 
 
 function setup() {

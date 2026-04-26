@@ -20,6 +20,7 @@ if [[ -z "${BIN_PATH}" ]]; then
   exit 1
 fi
 
+PROCESSORS="--skip=5"
 
 source ./fixture_processor.sh
 

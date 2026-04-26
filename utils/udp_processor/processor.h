@@ -2,6 +2,8 @@
 #define PROCESSOR_H
 
 #include <memory>
+#include <utility>
+
 
 #include <boost/asio.hpp>
 
@@ -17,7 +19,7 @@ using PacketInfoPtr = std::shared_ptr<PacketInfo>;
 
 class Processor {
  public:
-  Processor(boost::asio::io_context& ctx, std::shared_ptr<Processor> next) {}
+  Processor(std::shared_ptr<Processor> next): next_processor_(next) {}
   virtual ~Processor() {}
   virtual void Push(PacketInfoPtr packet) = 0;
 
@@ -33,4 +35,7 @@ class Processor {
 
 using ProcessorPtr = std::shared_ptr<Processor>;
 
-#endif // PROCESSOR_H
+ProcessorPtr CreateProcessor(
+    std::shared_ptr<Processor> next, std::string prefix, std::string value);
+
+#endif  // PROCESSOR_H

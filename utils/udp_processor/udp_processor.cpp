@@ -20,6 +20,13 @@ const size_t kPoolSize = 4;
 const size_t kUndefinedIndex = size_t(-1);
 const size_t kReadBufferSize = 2000;
 
+const std::string kProcessorsTypes[] = {"--skip="};
+
+
+struct ProcInfo {
+  std::string prefix;
+  std::string value;
+};
 
 
 /*! Структура для описания одного "пайпа" между клиентом и сервером */
@@ -28,13 +35,25 @@ struct PipeInfo {
       data_lock_;  //!< Лок на изменение данных: buffer_, ToServer, ToClient
   boost::asio::ip::udp::endpoint buffer_point_;
 
-  PipeInfo(boost::asio::io_context& ctx, bai::udp::socket& client_socket, bai::udp::endpoint client_point, bai::udp::endpoint server_point)
+  PipeInfo(boost::asio::io_context& ctx, bai::udp::socket& client_socket,
+      bai::udp::endpoint client_point, bai::udp::endpoint server_point,
+      const std::vector<ProcInfo>& procs)
       : SendSocket(ctx, server_point.protocol()), ClientPoint(client_point) {
-    auto s2s = std::make_shared<ProcessorSender>(ctx, SendSocket, server_point);
-    auto s2c = std::make_shared<ProcessorSender>(ctx, client_socket, client_point);
+    auto s2s = std::make_shared<ProcessorSender>(SendSocket, server_point);
+    auto s2c = std::make_shared<ProcessorSender>(client_socket, client_point);
 
     ToServerChain = s2s;
     ToClientChain = s2c;
+
+    for (auto it = procs.rbegin(); it != procs.rend(); ++it) {
+      ToServerChain = CreateProcessor(ToServerChain, it->prefix, it->value);
+      ToClientChain = CreateProcessor(ToClientChain, it->prefix, it->value);
+      if (!ToServerChain || !ToClientChain) {
+        std::cerr << "ERROR: can't create processor for prefix " << it->prefix
+                  << std::endl;
+        throw std::runtime_error("Wrong processor");
+      }
+    }
   }
 
   bai::udp::socket& GetSendSocket() { return SendSocket; }
@@ -43,15 +62,22 @@ struct PipeInfo {
   bai::udp::endpoint GetClientPoint() { return ClientPoint; }
 
  private:
-  bai::udp::socket SendSocket;  //!< Сокет для отправки пакетов на сервер // TODO rename
-  bai::udp::endpoint ClientPoint;  //!< Клиентская точка, на которую отправлять пакеты
+  bai::udp::socket
+      SendSocket;  //!< Сокет для отправки пакетов на сервер // TODO rename
+  bai::udp::endpoint
+      ClientPoint;  //!< Клиентская точка, на которую отправлять пакеты
 
-  ProcessorPtr ToServerChain; //!< Цепочка процессоров для отправки данных на сервер
-  ProcessorPtr ToClientChain; //!< Цепочка процессоров для отправки данных на клиент
+  ProcessorPtr
+      ToServerChain;  //!< Цепочка процессоров для отправки данных на сервер
+  ProcessorPtr
+      ToClientChain;  //!< Цепочка процессоров для отправки данных на клиент
 };
+
 
 std::vector<std::shared_ptr<PipeInfo>> pipes_;
 std::recursive_mutex pipes_lock_;
+
+std::vector<ProcInfo> processors_;
 
 boost::asio::io_context net_context_;
 boost::asio::ip::udp::socket receiver_{
@@ -72,9 +98,11 @@ void ProcessToClient(std::shared_ptr<PipeInfo> pipe);
 void PrintHelp() {
   std::cout << "Test utility with udp packet processing" << std::endl;
   std::cout << "Usage:" << std::endl;
-  std::cout << "  udp_processing --receive=ip:port --transmit=ip:port [--delay=value_ms]"
+  std::cout << "  udp_processing --receive=ip:port --transmit=ip:port "
+               "[--delay=value_ms] [--skip=n]"
             << std::endl;
   std::cout << "    --delay add delay to each packet" << std::endl;
+  std::cout << "    --skip skip each n-th packet" << std::endl;
 }
 
 
@@ -87,7 +115,8 @@ size_t GetPipe(bai::udp::endpoint point) {
   }
 
   // Создаём новый канал
-  auto p = std::make_shared<PipeInfo>(net_context_, receiver_, point, transmit_point);
+  auto p = std::make_shared<PipeInfo>(
+      net_context_, receiver_, point, transmit_point, processors_);
 
   // TODO DEBUG
   std::cout << "Create pipe for " << point << std::endl;
@@ -98,11 +127,9 @@ size_t GetPipe(bai::udp::endpoint point) {
 }
 
 void RequestReadPipe(std::shared_ptr<PipeInfo> pipe) {
-  auto pack =
-      std::make_shared<PacketInfo>();  // TODO Check bad_alloc exception
+  auto pack = std::make_shared<PacketInfo>();  // TODO Check bad_alloc exception
   pipe->GetSendSocket().async_receive_from(
-      boost::asio::buffer(pack->data_, kMaxPacketSize),
-      pipe->buffer_point_,
+      boost::asio::buffer(pack->data_, kMaxPacketSize), pipe->buffer_point_,
       [pipe, pack](boost::system::error_code err, std::size_t data_size) {
         if (err) {
           // TODO Error processing
@@ -167,8 +194,20 @@ int main(int argc, char** argv) {
       ParseIpPort(v, transmit_point);
       has_transmit_point = true;
     } else {
-      std::cerr << "Unknown argument '" << a << "'" << std::endl;
-      return 1;
+      // Проверим процессоры
+      bool found = false;
+      for (auto& i : kProcessorsTypes) {
+        if (CheckPrefix(i, a, v)) {
+          found = true;
+          processors_.push_back({i, v});
+          break;
+        }
+      }
+
+      if (!found) {
+        std::cerr << "Unknown argument '" << a << "'" << std::endl;
+        return 1;
+      }
     }
   }
 
