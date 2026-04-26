@@ -20,6 +20,7 @@ if [[ -z "${BIN_PATH}" ]]; then
   exit 1
 fi
 
+PROCESSORS="--skip=5"
 
 source ./fixture_processor.sh
 
@@ -53,7 +54,6 @@ function test() {
       echo "receiver hasn't stopped after receiving data"
 	  RES=1
     else
-      echo "Transferred $(stat -c %s "${DESTINATION_FILE}") bytes"
       RECEIVER=-1
 	fi
   fi

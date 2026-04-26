@@ -10,6 +10,8 @@
 #include <boost/asio.hpp>
 
 #include "parser.h"
+#include "processor.h"
+#include "processor_sender.h"
 
 
 namespace bai = boost::asio::ip;
@@ -17,36 +19,65 @@ namespace bai = boost::asio::ip;
 const size_t kPoolSize = 4;
 const size_t kUndefinedIndex = size_t(-1);
 const size_t kReadBufferSize = 2000;
-const size_t kMaxPacketSize = 2000;
 
-/*! Структура для описания одного пакета */
-struct PacketInfo {
-  size_t size_;
-  uint8_t data_[kMaxPacketSize];  //!< Данные самого пакета
+const std::string kProcessorsTypes[] = {"--skip="};
+
+
+struct ProcInfo {
+  std::string prefix;
+  std::string value;
 };
+
 
 /*! Структура для описания одного "пайпа" между клиентом и сервером */
 struct PipeInfo {
-  bai::udp::socket SendSocket;  //!< Сокет для отправки пакетов на сервер
-  bai::udp::endpoint
-      ClientPoint;  //!< Клиентская точка, на которую отправлять пакеты
-  std::atomic_flag
-      processing_;  //!< Признак, что производится обработка сетевого трафика
   std::mutex
       data_lock_;  //!< Лок на изменение данных: buffer_, ToServer, ToClient
-  std::shared_ptr<PacketInfo>
-      buffer_;  //!< Буфер для вычитывания данных от сервера
   boost::asio::ip::udp::endpoint buffer_point_;
-  std::vector<std::shared_ptr<PacketInfo>> ToServer,
-      ToClient;  //!< Очереди для пакетов на сервер и на клиента
 
-  PipeInfo(boost::asio::io_context& ctx,
-      boost::asio::ip::udp::endpoint::protocol_type prot)
-      : SendSocket(ctx, prot) {}
+  PipeInfo(boost::asio::io_context& ctx, bai::udp::socket& client_socket,
+      bai::udp::endpoint client_point, bai::udp::endpoint server_point,
+      const std::vector<ProcInfo>& procs)
+      : SendSocket(ctx, server_point.protocol()), ClientPoint(client_point) {
+    auto s2s = std::make_shared<ProcessorSender>(SendSocket, server_point);
+    auto s2c = std::make_shared<ProcessorSender>(client_socket, client_point);
+
+    ToServerChain = s2s;
+    ToClientChain = s2c;
+
+    for (auto it = procs.rbegin(); it != procs.rend(); ++it) {
+      ToServerChain = CreateProcessor(ToServerChain, it->prefix, it->value);
+      ToClientChain = CreateProcessor(ToClientChain, it->prefix, it->value);
+      if (!ToServerChain || !ToClientChain) {
+        std::cerr << "ERROR: can't create processor for prefix " << it->prefix
+                  << std::endl;
+        throw std::runtime_error("Wrong processor");
+      }
+    }
+  }
+
+  bai::udp::socket& GetSendSocket() { return SendSocket; }
+  ProcessorPtr GetServerChain() { return ToServerChain; }
+  ProcessorPtr GetClientChain() { return ToClientChain; }
+  bai::udp::endpoint GetClientPoint() { return ClientPoint; }
+
+ private:
+  bai::udp::socket
+      SendSocket;  //!< Сокет для отправки пакетов на сервер // TODO rename
+  bai::udp::endpoint
+      ClientPoint;  //!< Клиентская точка, на которую отправлять пакеты
+
+  ProcessorPtr
+      ToServerChain;  //!< Цепочка процессоров для отправки данных на сервер
+  ProcessorPtr
+      ToClientChain;  //!< Цепочка процессоров для отправки данных на клиент
 };
+
 
 std::vector<std::shared_ptr<PipeInfo>> pipes_;
 std::recursive_mutex pipes_lock_;
+
+std::vector<ProcInfo> processors_;
 
 boost::asio::io_context net_context_;
 boost::asio::ip::udp::socket receiver_{
@@ -55,8 +86,6 @@ boost::asio::ip::udp::socket receiver_{
 uint8_t receiver_buffer_[kReadBufferSize];
 boost::asio::ip::udp::endpoint client_holder_;
 
-std::atomic_flag request_processing_;  //!< Флаг на запрос нового "процессинга"
-                                       //!< - обработки данных
 
 // TODO Rename
 bool has_transmit_point = false;
@@ -69,57 +98,46 @@ void ProcessToClient(std::shared_ptr<PipeInfo> pipe);
 void PrintHelp() {
   std::cout << "Test utility with udp packet processing" << std::endl;
   std::cout << "Usage:" << std::endl;
-  std::cout << "  udp_processing --receive=ip:port --transmit=ip:port"
+  std::cout << "  udp_processing --receive=ip:port --transmit=ip:port "
+               "[--delay=value_ms] [--skip=n]"
             << std::endl;
+  std::cout << "    --delay add delay to each packet" << std::endl;
+  std::cout << "    --skip skip each n-th packet" << std::endl;
 }
 
 
 size_t GetPipe(bai::udp::endpoint point) {
   std::lock_guard lk(pipes_lock_);
   for (size_t i = 0; i < pipes_.size(); ++i) {
-    if (pipes_[i]->ClientPoint == point) {
+    if (pipes_[i]->GetClientPoint() == point) {
       return i;
     }
   }
 
   // Создаём новый канал
-  auto p = std::make_shared<PipeInfo>(net_context_, transmit_point.protocol());
-  p->ClientPoint = point;
+  auto p = std::make_shared<PipeInfo>(
+      net_context_, receiver_, point, transmit_point, processors_);
 
-  // TODO DEBUG
-  std::cout << "Create pipe for " << point << std::endl;
-  p->processing_.clear();
   pipes_.push_back(p);
+
   RequestReadPipe(p);
+
   assert(!pipes_.empty());
   return pipes_.size() - 1;
 }
 
 void RequestReadPipe(std::shared_ptr<PipeInfo> pipe) {
-  std::lock_guard lk(pipe->data_lock_);
-  if (!pipe->buffer_) {
-    pipe->buffer_ = std::make_shared<PacketInfo>();  // TODO Memory management
-  }
-  pipe->SendSocket.async_receive_from(
-      boost::asio::buffer(pipe->buffer_->data_, kMaxPacketSize),
-      pipe->buffer_point_,
-      [pipe](boost::system::error_code err, std::size_t data_size) {
+  auto pack = std::make_shared<PacketInfo>();  // TODO Check bad_alloc exception
+  pipe->GetSendSocket().async_receive_from(
+      boost::asio::buffer(pack->data_, kMaxPacketSize), pipe->buffer_point_,
+      [pipe, pack](boost::system::error_code err, std::size_t data_size) {
         if (err) {
           // TODO Error processing
         } else if (data_size <= kMaxPacketSize) {
           // Получили блок данных
           if (pipe->buffer_point_ == transmit_point) {
-            pipe->buffer_->size_ = data_size;
-            std::unique_lock lk(pipes_lock_);
-            pipe->ToClient.push_back(pipe->buffer_);
-            pipe->buffer_.reset();
-            lk.unlock();
-
-            if (!pipe->processing_.test_and_set()) {
-              // Это первый запрос с последней обработки
-              // Регистрируем обработку
-              net_context_.post([pipe]() { ProcessToClient(pipe); });
-            }
+            pack->size_ = data_size;
+            pipe->GetClientChain()->Push(pack);
           }
         } else {
           // Очень большой пакет по udp
@@ -128,51 +146,6 @@ void RequestReadPipe(std::shared_ptr<PipeInfo> pipe) {
 
         RequestReadPipe(pipe);
       });
-}
-
-
-void ProcessToServer() {
-  request_processing_.clear();
-
-  std::lock_guard lk(pipes_lock_);
-  for (auto it = pipes_.begin(); it != pipes_.end(); ++it) {
-    // ToService
-    for (auto si = (*it)->ToServer.begin(); si != (*it)->ToServer.end(); ++si) {
-      auto pack = *si;
-      (*it)->SendSocket.async_send_to(
-          boost::asio::buffer(pack->data_, pack->size_), transmit_point,
-          [pack](boost::system::error_code e /*ec*/,
-              std::size_t b /*bytes_sent*/) {
-            // TODO Debug
-            if (e) {
-              auto m = e.message();
-              std::cout << "-> " << m << std::endl;
-              int k = 0;
-            }
-          });
-    }
-    (*it)->ToServer.clear();
-  }
-}
-
-void ProcessToClient(std::shared_ptr<PipeInfo> pipe) {
-  pipe->processing_.clear();
-
-  std::lock_guard lk(pipes_lock_);
-  for (auto ci = pipe->ToClient.begin(); ci != pipe->ToClient.end(); ++ci) {
-    auto pack = *ci;
-    receiver_.async_send_to(boost::asio::buffer(pack->data_, pack->size_),
-        pipe->ClientPoint,
-        [pack](boost::system::error_code e /*ec*/, std::size_t /*bytes_sent*/) {
-          // TODO Debug
-          if (e) {
-            auto m = e.message();
-            std::cout << "<- " << m << std::endl;
-            int k = 0;
-          }
-        });
-  }
-  pipe->ToClient.clear();
 }
 
 
@@ -190,14 +163,8 @@ void RequestReadReceive() {
               std::make_shared<PacketInfo>();  // TODO Check bad_alloc exception
           pack->size_ = data_size;
           memcpy(pack->data_, receiver_buffer_, pack->size_);
-          pipes_[p]->ToServer.push_back(pack);
+          pipes_[p]->GetServerChain()->Push(pack);
           lk.unlock();
-
-          if (!request_processing_.test_and_set()) {
-            // Это первый запрос с последней обработки
-            // Регистрируем обработку
-            net_context_.post([]() { ProcessToServer(); });
-          }
         } else {
           // Очень большой пакет по udp
           assert(false);
@@ -227,8 +194,20 @@ int main(int argc, char** argv) {
       ParseIpPort(v, transmit_point);
       has_transmit_point = true;
     } else {
-      std::cerr << "Unknown argument '" << a << "'" << std::endl;
-      return 1;
+      // Проверим процессоры
+      bool found = false;
+      for (auto& i : kProcessorsTypes) {
+        if (CheckPrefix(i, a, v)) {
+          found = true;
+          processors_.push_back({i, v});
+          break;
+        }
+      }
+
+      if (!found) {
+        std::cerr << "Unknown argument '" << a << "'" << std::endl;
+        return 1;
+      }
     }
   }
 

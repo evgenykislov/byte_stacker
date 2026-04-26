@@ -79,14 +79,12 @@ function test() {
       echo "receiver 1 hasn't stopped after receiving data"
       RES=1
     else
-      echo "Transferred $(stat -c %s "${DESTINATION1_FILE}") bytes"
       RECEIVER1=-1
     fi
     if ps -p ${RECEIVER2} > /dev/null 2>&1 ; then
       echo "receiver 2 hasn't stopped after receiving data"
       RES=1
     else
-      echo "Transferred $(stat -c %s "${DESTINATION2_FILE}") bytes"
       RECEIVER2=-1
     fi
   fi
