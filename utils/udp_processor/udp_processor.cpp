@@ -24,29 +24,27 @@ const size_t kReadBufferSize = 2000;
 
 /*! Структура для описания одного "пайпа" между клиентом и сервером */
 struct PipeInfo {
-  bai::udp::endpoint
-      ClientPoint;  //!< Клиентская точка, на которую отправлять пакеты
-  std::atomic_flag
-      processing_;  //!< Признак, что производится обработка сетевого трафика
   std::mutex
       data_lock_;  //!< Лок на изменение данных: buffer_, ToServer, ToClient
-  std::shared_ptr<PacketInfo>
-      buffer_;  //!< Буфер для вычитывания данных от сервера
   boost::asio::ip::udp::endpoint buffer_point_;
-  std::vector<std::shared_ptr<PacketInfo>> ToClient;  //!< Очереди для пакетов на сервер и на клиента
 
-  PipeInfo(boost::asio::io_context& ctx, bai::udp::endpoint server_point)
-      : SendSocket(ctx, server_point.protocol()) {
-    auto sender = std::make_shared<ProcessorSender>(ctx, SendSocket, server_point);
+  PipeInfo(boost::asio::io_context& ctx, bai::udp::socket& client_socket, bai::udp::endpoint client_point, bai::udp::endpoint server_point)
+      : SendSocket(ctx, server_point.protocol()), ClientPoint(client_point) {
+    auto s2s = std::make_shared<ProcessorSender>(ctx, SendSocket, server_point);
+    auto s2c = std::make_shared<ProcessorSender>(ctx, client_socket, client_point);
 
-    ToServerChain = sender;
+    ToServerChain = s2s;
+    ToClientChain = s2c;
   }
 
   bai::udp::socket& GetSendSocket() { return SendSocket; }
   ProcessorPtr GetServerChain() { return ToServerChain; }
+  ProcessorPtr GetClientChain() { return ToClientChain; }
+  bai::udp::endpoint GetClientPoint() { return ClientPoint; }
 
  private:
   bai::udp::socket SendSocket;  //!< Сокет для отправки пакетов на сервер // TODO rename
+  bai::udp::endpoint ClientPoint;  //!< Клиентская точка, на которую отправлять пакеты
 
   ProcessorPtr ToServerChain; //!< Цепочка процессоров для отправки данных на сервер
   ProcessorPtr ToClientChain; //!< Цепочка процессоров для отправки данных на клиент
@@ -83,18 +81,16 @@ void PrintHelp() {
 size_t GetPipe(bai::udp::endpoint point) {
   std::lock_guard lk(pipes_lock_);
   for (size_t i = 0; i < pipes_.size(); ++i) {
-    if (pipes_[i]->ClientPoint == point) {
+    if (pipes_[i]->GetClientPoint() == point) {
       return i;
     }
   }
 
   // Создаём новый канал
-  auto p = std::make_shared<PipeInfo>(net_context_, transmit_point);
-  p->ClientPoint = point;
+  auto p = std::make_shared<PipeInfo>(net_context_, receiver_, point, transmit_point);
 
   // TODO DEBUG
   std::cout << "Create pipe for " << point << std::endl;
-  p->processing_.clear();
   pipes_.push_back(p);
   RequestReadPipe(p);
   assert(!pipes_.empty());
@@ -102,30 +98,19 @@ size_t GetPipe(bai::udp::endpoint point) {
 }
 
 void RequestReadPipe(std::shared_ptr<PipeInfo> pipe) {
-  std::lock_guard lk(pipe->data_lock_);
-  if (!pipe->buffer_) {
-    pipe->buffer_ = std::make_shared<PacketInfo>();  // TODO Memory management
-  }
+  auto pack =
+      std::make_shared<PacketInfo>();  // TODO Check bad_alloc exception
   pipe->GetSendSocket().async_receive_from(
-      boost::asio::buffer(pipe->buffer_->data_, kMaxPacketSize),
+      boost::asio::buffer(pack->data_, kMaxPacketSize),
       pipe->buffer_point_,
-      [pipe](boost::system::error_code err, std::size_t data_size) {
+      [pipe, pack](boost::system::error_code err, std::size_t data_size) {
         if (err) {
           // TODO Error processing
         } else if (data_size <= kMaxPacketSize) {
           // Получили блок данных
           if (pipe->buffer_point_ == transmit_point) {
-            pipe->buffer_->size_ = data_size;
-            std::unique_lock lk(pipes_lock_);
-            pipe->ToClient.push_back(pipe->buffer_);
-            pipe->buffer_.reset();
-            lk.unlock();
-
-            if (!pipe->processing_.test_and_set()) {
-              // Это первый запрос с последней обработки
-              // Регистрируем обработку
-              net_context_.post([pipe]() { ProcessToClient(pipe); });
-            }
+            pack->size_ = data_size;
+            pipe->GetClientChain()->Push(pack);
           }
         } else {
           // Очень большой пакет по udp
@@ -134,27 +119,6 @@ void RequestReadPipe(std::shared_ptr<PipeInfo> pipe) {
 
         RequestReadPipe(pipe);
       });
-}
-
-
-void ProcessToClient(std::shared_ptr<PipeInfo> pipe) {
-  pipe->processing_.clear();
-
-  std::lock_guard lk(pipes_lock_);
-  for (auto ci = pipe->ToClient.begin(); ci != pipe->ToClient.end(); ++ci) {
-    auto pack = *ci;
-    receiver_.async_send_to(boost::asio::buffer(pack->data_, pack->size_),
-        pipe->ClientPoint,
-        [pack](boost::system::error_code e /*ec*/, std::size_t /*bytes_sent*/) {
-          // TODO Debug
-          if (e) {
-            auto m = e.message();
-            std::cout << "<- " << m << std::endl;
-            int k = 0;
-          }
-        });
-  }
-  pipe->ToClient.clear();
 }
 
 
