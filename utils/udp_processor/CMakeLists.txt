@@ -15,6 +15,8 @@ set(SOURCE_FILES
 )
 
 set(HEADER_FILES
+  "processor.h"
+  "processor_sender.h"
   "../../common/parser.h"
 )
 
