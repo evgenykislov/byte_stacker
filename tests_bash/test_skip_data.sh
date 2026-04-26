@@ -54,7 +54,6 @@ function test() {
       echo "receiver hasn't stopped after receiving data"
 	  RES=1
     else
-      echo "Transferred $(stat -c %s "${DESTINATION_FILE}") bytes"
       RECEIVER=-1
 	fi
   fi

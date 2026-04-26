@@ -118,10 +118,10 @@ size_t GetPipe(bai::udp::endpoint point) {
   auto p = std::make_shared<PipeInfo>(
       net_context_, receiver_, point, transmit_point, processors_);
 
-  // TODO DEBUG
-  std::cout << "Create pipe for " << point << std::endl;
   pipes_.push_back(p);
+
   RequestReadPipe(p);
+
   assert(!pipes_.empty());
   return pipes_.size() - 1;
 }
