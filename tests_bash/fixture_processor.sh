@@ -6,17 +6,16 @@
 
 PROC_IN=-1
 PROC_OUT=-1
-RECEIVER=-1
-
-# Файл с полученными данными
-RES_FILE=$(mktemp)
+PROC_PROCESSOR=-1
 
 
 function setup() {
-  ${BIN_PATH}/byte_stacker_in --local1=127.0.0.2:30001 --trunk=127.0.0.1:20000 &
+  ${BIN_PATH}/byte_stacker_in --local1=127.0.0.2:30001 --trunk=127.0.0.2:20000 &
   PROC_IN=$!
-  ${BIN_PATH}/byte_stacker_out --external1=127.0.0.2:50001 --trunk=127.0.0.1:20001 &
+  ${BIN_PATH}/byte_stacker_out --external1=127.0.0.2:50001 --trunk=127.0.0.2:20001 &
   PROC_OUT=$!
+  ${BIN_PATH}/udp_processor --receive=127.0.0.2:20000 --transmit=127.0.0.2:20001 &
+  PROC_PROCESSOR=$!
 
   sleep 0.5
 
@@ -32,6 +31,13 @@ function setup() {
     RES=1
     PROC_OUT=-1
   fi
+
+  if ! ps -p ${PROC_PROCESSOR} > /dev/null 2>&1 ; then
+    echo "processor-process hasn't run"
+    RES=1
+    PROC_PROCESSOR=-1
+  fi
+
   return ${RES}
 }
 
@@ -43,11 +49,8 @@ function teardown() {
   if [[ ${PROC_OUT} != -1 ]]; then
     kill ${PROC_OUT}
   fi
-  if [[ ${RECEIVER} != -1 ]]; then
-    kill ${RECEIVER}
-  fi
-  if [[ ${RES_FILE} != "" ]]; then
-    rm -f ${RES_FILE}
+  if [[ ${PROC_PROCESSOR} != -1 ]]; then
+    kill ${PROC_PROCESSOR}
   fi
 }
 
