@@ -20,7 +20,7 @@ const size_t kPoolSize = 4;
 const size_t kUndefinedIndex = size_t(-1);
 const size_t kReadBufferSize = 2000;
 
-const std::string kProcessorsTypes[] = {"--skip="};
+const std::string kProcessorsTypes[] = {"--skip=", "--delay="};
 
 
 struct ProcInfo {
@@ -46,8 +46,10 @@ struct PipeInfo {
     ToClientChain = s2c;
 
     for (auto it = procs.rbegin(); it != procs.rend(); ++it) {
-      ToServerChain = CreateProcessor(ToServerChain, it->prefix, it->value);
-      ToClientChain = CreateProcessor(ToClientChain, it->prefix, it->value);
+      ToServerChain =
+          CreateProcessor(ctx, ToServerChain, it->prefix, it->value);
+      ToClientChain =
+          CreateProcessor(ctx, ToClientChain, it->prefix, it->value);
       if (!ToServerChain || !ToClientChain) {
         std::cerr << "ERROR: can't create processor for prefix " << it->prefix
                   << std::endl;

@@ -17,6 +17,7 @@ set(SOURCE_FILES
 
 set(HEADER_FILES
   "processor.h"
+  "processor_delay.h"
   "processor_sender.h"
   "processor_skip.h"
   "../../common/parser.h"

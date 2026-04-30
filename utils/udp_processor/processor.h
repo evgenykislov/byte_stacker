@@ -35,7 +35,7 @@ class Processor {
 
 using ProcessorPtr = std::shared_ptr<Processor>;
 
-ProcessorPtr CreateProcessor(
+ProcessorPtr CreateProcessor(boost::asio::io_context& ctx,
     std::shared_ptr<Processor> next, std::string prefix, std::string value);
 
 #endif  // PROCESSOR_H
