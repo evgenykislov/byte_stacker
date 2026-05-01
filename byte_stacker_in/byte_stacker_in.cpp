@@ -66,7 +66,10 @@ void RequestAccept(boost::asio::io_context& ctx,
           // Получили новое соединение. Регистрируем, работаем
           RegisterNewConnection(trc, id, std::move(*socket.get()));
         } else if (error == boost::asio::error::connection_aborted) {
-          // Соединение пришло и сразу разорвалось. Это некритично
+          // Соединение пришло и сразу разорвалось. Это некритично. Продолжаем работу
+        } else if (error == boost::asio::error::operation_aborted) {
+          // Штатно завершаем работу
+          return;
         } else {
           // Все остальные ошибки критичные. Выходим
           trlog("ERROR: can't accept to point %u: %s\n", id,
@@ -80,15 +83,18 @@ void RequestAccept(boost::asio::io_context& ctx,
 }
 
 
-/*! Создание акцептора и запуск его опроса
+/*! Создание акцептора и запуск его опроса. Если при создании акцептора или
+запуске ожидания возникают ошибки, то выдаётся исключение
 \param ctx сетевой контекст
 \param trc клиентский обработчик, в котором регистрируются новые соединения
 \param id идентификатор точки, задаётся в командной строке
-\param point точка приёма подключений */
-void ListenLocalPoint(boost::asio::io_context& ctx, TrunkClient& trc,
+\param point точка приёма подключений
+\return акцептор, на котором уже ожидаютсмя подключения */
+std::shared_ptr<bai::tcp::acceptor> ListenLocalPoint(boost::asio::io_context& ctx, TrunkClient& trc,
     PointID id, boost::asio::ip::tcp::endpoint point) {
   auto acceptor = std::make_shared<bai::tcp::acceptor>(ctx, point);
   RequestAccept(ctx, acceptor, trc, id);
+  return acceptor;
 }
 
 
@@ -141,15 +147,17 @@ int main(int argc, char** argv) {
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
-      ctx.stop();
       // Проинформируем об остановке
       std::lock_guard lk(stop_lock);
       stop_flag = true;
       stop_var.notify_all();
     });
 
+    // Подготовка акцепторов
+    std::vector<std::shared_ptr<bai::tcp::acceptor>> acceptors;
     for (auto& p : lps) {
-      ListenLocalPoint(ctx, trc, p.first, p.second);
+      auto acp = ListenLocalPoint(ctx, trc, p.first, p.second);
+      acceptors.push_back(acp);
     }
 
     // Запустим потоки обработки сети
@@ -179,7 +187,19 @@ int main(int argc, char** argv) {
     }
     sl.unlock();
 
-    // Остановим все потоки
+    // -----------------
+    // Останавливаем приложение
+
+    for (auto i: acceptors) {
+      boost::system::error_code ec;
+      i->close(ec);
+      if (ec) {
+        trlog("ERROR: can't close acceptance: %s\n", ec.message().c_str());
+      }
+    }
+
+    // Остановим сетевой контекст и потоки
+    ctx.stop();
     for (auto& item : pool) {
       if (item.joinable()) {
         item.join();
