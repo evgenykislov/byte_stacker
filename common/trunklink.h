@@ -1,6 +1,8 @@
 #ifndef TRUNKLINK_H
 #define TRUNKLINK_H
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <mutex>
 #include <utility>
 

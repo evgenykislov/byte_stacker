@@ -152,7 +152,7 @@ void TrunkLink::SendCmdData(
   CopyConnectID(pkt->ConnectID, cnt);
   pkt->PacketCommand = cmd;
   pkt->PacketIndex = pkt_index;
-  pkt->DataSize = data_size;
+  pkt->DataSize = static_cast<uint32_t>(data_size);
   memcpy(buf.get() + sizeof(PacketData), data, data_size);
 
   // Сформируем информационный блок для кэширования и т.д.
@@ -160,7 +160,7 @@ void TrunkLink::SendCmdData(
   info.CtxID = cnt;
   info.PacketID = pkt_index;
   info.PacketData = buf;
-  info.PacketSize = sizeof(PacketData) + data_size;
+  info.PacketSize = static_cast<uint32_t>(sizeof(PacketData) + data_size);
 
   PacketDataCache pc;
   pc.info = info;
