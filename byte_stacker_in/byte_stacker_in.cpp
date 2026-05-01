@@ -51,26 +51,40 @@ void RegisterNewConnection(
 }
 
 
-// TODO Descr
+/*! Запрос на подключение по указанному акцептору. Функция сама себя вызывает
+в бесконечном цикле, пока работает сетевой контекст (до завершения приложения)
+\param ctx сетевой контекст
+\param acp акцептор, уже привязанный к нужному адресу и порту
+\param trc клиентский обработчик, в котором регистрируются новые соединения
+\param id идентификатор точки, задаётся в командной строке */
 void RequestAccept(boost::asio::io_context& ctx,
     std::shared_ptr<bai::tcp::acceptor> acp, TrunkClient& trc, PointID id) {
   auto socket = std::make_shared<bai::tcp::socket>(ctx);
   acp->async_accept(*socket,
       [&ctx, &trc, socket, acp, id](const boost::system::error_code& error) {
-        if (error) {
-          // TODO Process error
+        if (!error) {
+          // Получили новое соединение. Регистрируем, работаем
+          RegisterNewConnection(trc, id, std::move(*socket.get()));
+        } else if (error == boost::asio::error::connection_aborted) {
+          // Соединение пришло и сразу разорвалось. Это некритично
+        } else {
+          // Все остальные ошибки критичные. Выходим
           trlog("ERROR: can't accept to point %u: %s\n", id,
               error.message().c_str());
           return;
         }
 
-        RegisterNewConnection(trc, id, std::move(*socket.get()));
+        // Продолжаем принимать новые подключения
         RequestAccept(ctx, acp, trc, id);
       });
 }
 
 
-// TODO Descr
+/*! Создание акцептора и запуск его опроса
+\param ctx сетевой контекст
+\param trc клиентский обработчик, в котором регистрируются новые соединения
+\param id идентификатор точки, задаётся в командной строке
+\param point точка приёма подключений */
 void ListenLocalPoint(boost::asio::io_context& ctx, TrunkClient& trc,
     PointID id, boost::asio::ip::tcp::endpoint point) {
   auto acceptor = std::make_shared<bai::tcp::acceptor>(ctx, point);
