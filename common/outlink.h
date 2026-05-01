@@ -1,6 +1,8 @@
 #ifndef OUTLINK_H
 #define OUTLINK_H
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <atomic>
 #include <cstdint>
 #include <fstream>

@@ -32,13 +32,13 @@ set(HEADER_FILES
 )
 
 find_package(Threads REQUIRED)
-find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost REQUIRED)
 
 add_executable (${PROJECT_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 
-include_directories(${PROJECT_NAME} "../common")
+include_directories(${PROJECT_NAME} ${Boost_INCLUDE_DIRS})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system)
+include_directories(${PROJECT_NAME} "../common")
 
 if (CONNECT_LOG)
   target_compile_definitions(${PROJECT_NAME} PRIVATE -DCONNECT_LOG)

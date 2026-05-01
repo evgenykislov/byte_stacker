@@ -1,6 +1,8 @@
 #ifndef TRACE_H
 #define TRACE_H
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <chrono>
 #include <cstdio>
 #include <iomanip>

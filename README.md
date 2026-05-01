@@ -7,3 +7,7 @@
 cmake -B build  
 cmake --build build  
 
+
+
+# Сборка под Windows
+Установите boost, пропишите BOOST_ROOT

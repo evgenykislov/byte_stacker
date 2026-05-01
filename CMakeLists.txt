@@ -13,7 +13,10 @@ project ("byte_stacker")
 
 # Include sub-projects.
 add_subdirectory("byte_stacker_in")
-add_subdirectory("byte_stacker_out")
-add_subdirectory("tests_code")
-add_subdirectory("utils/file_generator")
-add_subdirectory("utils/udp_processor")
+
+if(UNIX AND NOT APPLE) 
+  add_subdirectory("byte_stacker_out")
+  add_subdirectory("tests_code")
+  add_subdirectory("utils/file_generator")
+  add_subdirectory("utils/udp_processor")
+endif()
