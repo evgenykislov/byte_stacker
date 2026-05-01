@@ -231,7 +231,12 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   void ResolverProcessing(const boost::system::error_code& err,
       boost::asio::ip::tcp::resolver::results_type results);
 
-  // TODO Descr
+
+  /*! Запись сообщений (логов) в файл для дальнейшего разбора.
+  Функция делает запись только при наличии дефайна CONNECT_LOG
+  В записях добавляются временные метки.
+  \param format форматка для вывода
+  \param args аргументы для вывода */
   template <typename... Types>
   void LogWrite(const char* format, Types... args) {
 #ifdef CONNECT_LOG

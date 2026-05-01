@@ -51,30 +51,50 @@ void RegisterNewConnection(
 }
 
 
-// TODO Descr
+/*! Запрос на подключение по указанному акцептору. Функция сама себя вызывает
+в бесконечном цикле, пока работает сетевой контекст (до завершения приложения)
+\param ctx сетевой контекст
+\param acp акцептор, уже привязанный к нужному адресу и порту
+\param trc клиентский обработчик, в котором регистрируются новые соединения
+\param id идентификатор точки, задаётся в командной строке */
 void RequestAccept(boost::asio::io_context& ctx,
     std::shared_ptr<bai::tcp::acceptor> acp, TrunkClient& trc, PointID id) {
   auto socket = std::make_shared<bai::tcp::socket>(ctx);
   acp->async_accept(*socket,
       [&ctx, &trc, socket, acp, id](const boost::system::error_code& error) {
-        if (error) {
-          // TODO Process error
+        if (!error) {
+          // Получили новое соединение. Регистрируем, работаем
+          RegisterNewConnection(trc, id, std::move(*socket.get()));
+        } else if (error == boost::asio::error::connection_aborted) {
+          // Соединение пришло и сразу разорвалось. Это некритично. Продолжаем работу
+        } else if (error == boost::asio::error::operation_aborted) {
+          // Штатно завершаем работу
+          return;
+        } else {
+          // Все остальные ошибки критичные. Выходим
           trlog("ERROR: can't accept to point %u: %s\n", id,
               error.message().c_str());
           return;
         }
 
-        RegisterNewConnection(trc, id, std::move(*socket.get()));
+        // Продолжаем принимать новые подключения
         RequestAccept(ctx, acp, trc, id);
       });
 }
 
 
-// TODO Descr
-void ListenLocalPoint(boost::asio::io_context& ctx, TrunkClient& trc,
+/*! Создание акцептора и запуск его опроса. Если при создании акцептора или
+запуске ожидания возникают ошибки, то выдаётся исключение
+\param ctx сетевой контекст
+\param trc клиентский обработчик, в котором регистрируются новые соединения
+\param id идентификатор точки, задаётся в командной строке
+\param point точка приёма подключений
+\return акцептор, на котором уже ожидаютсмя подключения */
+std::shared_ptr<bai::tcp::acceptor> ListenLocalPoint(boost::asio::io_context& ctx, TrunkClient& trc,
     PointID id, boost::asio::ip::tcp::endpoint point) {
   auto acceptor = std::make_shared<bai::tcp::acceptor>(ctx, point);
   RequestAccept(ctx, acceptor, trc, id);
+  return acceptor;
 }
 
 
@@ -127,15 +147,17 @@ int main(int argc, char** argv) {
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
-      ctx.stop();
       // Проинформируем об остановке
       std::lock_guard lk(stop_lock);
       stop_flag = true;
       stop_var.notify_all();
     });
 
+    // Подготовка акцепторов
+    std::vector<std::shared_ptr<bai::tcp::acceptor>> acceptors;
     for (auto& p : lps) {
-      ListenLocalPoint(ctx, trc, p.first, p.second);
+      auto acp = ListenLocalPoint(ctx, trc, p.first, p.second);
+      acceptors.push_back(acp);
     }
 
     // Запустим потоки обработки сети
@@ -165,7 +187,19 @@ int main(int argc, char** argv) {
     }
     sl.unlock();
 
-    // Остановим все потоки
+    // -----------------
+    // Останавливаем приложение
+
+    for (auto i: acceptors) {
+      boost::system::error_code ec;
+      i->close(ec);
+      if (ec) {
+        trlog("ERROR: can't close acceptance: %s\n", ec.message().c_str());
+      }
+    }
+
+    // Остановим сетевой контекст и потоки
+    ctx.stop();
     for (auto& item : pool) {
       if (item.joinable()) {
         item.join();
