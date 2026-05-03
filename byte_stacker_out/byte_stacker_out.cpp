@@ -127,9 +127,9 @@ int main(int argc, char** argv) {
       auto cnt = (unsigned int)(stat.ConnectAmount);
       tout(
           ": FAULT: %8u | External: %8u kBytes/s | Trunk: %8u kBytes/s | "
-          "Connects: %8u | Ping(min,avg,max): %.1f/%.1f/%.1f\n",
+          "Connects: %8u | Ping(min,avg,max): %.1f/%.1f/%.1f | Cache: %8u\n",
           stat.FauldPacket, ospeed, ispeed, cnt, stat.MinPing / 1000.0,
-          stat.AveragePing / 1000.0, stat.MaxPing / 1000.0);
+          stat.AveragePing / 1000.0, stat.MaxPing / 1000.0, stat.cache_load);
     }
     sl.unlock();
 

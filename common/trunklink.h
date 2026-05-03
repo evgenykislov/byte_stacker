@@ -27,8 +27,20 @@ enum TrunkCommand : uint32_t {
 
 
 const size_t kConnectIDSize = 16;
-const unsigned int kResendTimeout = 300;
-const unsigned int kDeadlineTimeout = 20000;
+
+const unsigned int kResendTimeout = 300; //!< Интервал перепосылки пакетов
+
+/*! Интервал перепосылки коннект-пакетов (создания нового соединения) */
+const unsigned int kResendConnectTimeout = 150;
+
+/*! Таймаут в течение которого должен прийти ЛЮБОЙ ответ для соединения: live,
+подтверждение пакета и т.п.. Иначе соединение будет считаться мёртвым */
+const unsigned int kDeadOutLinkTimeout = 5000;
+
+/*! Таймаут в течение которого должно прийти подтверждение пакета.
+Иначе пакет будет считаться мёртвым и его удалят из очереди
+Прим: У мёртвого соединения могут быть "живые" пакеты - это нормально */
+static const size_t kDeadPacketTimeout = 20000;
 
 const size_t kMaxChunkSize = 800;
 
@@ -70,6 +82,8 @@ struct StatInfo {
   size_t MaxPing;
   size_t AveragePing;
   size_t FauldPacket;
+  size_t cache_load; // Количество кэшированных пакетов для повторной отправки
+  bool no_live; // Признак, что были попытки соединения без подтверждения
 };
 
 class OutLink;
@@ -132,7 +146,9 @@ class TrunkLink {
   PacketInfo FormPacket(
       const PacketData& header, uint8_t* data, size_t data_size);
 
-  // TODO Descr
+  /*! Отправить пакет по транку. Ошибки отправки не контролируются,
+  переотправка должна реализовываться раньше/в другом месте
+  \param pkt отправляемый пакет */
   virtual void SendPacket(PacketInfo pkt) = 0;
 
   // Обработчики отдельных команд
@@ -170,9 +186,9 @@ class TrunkLink {
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();
 
-  // TODO Descr
+  /* Пепосылка кэша пакетов. При перепосылке используется таймер, чтобы не
+  устраивать шторм пакетов */
   virtual void OnCacheResend();
-
 
   /*! Послать по транку информацию о разрыве соединения
   \param cnt идентификатор коннекта */
@@ -202,27 +218,28 @@ class TrunkLink {
 
   static const size_t kUpdateTick = 100;
   static const size_t kLiveUpdateTick = 300;
-  static const size_t kDeadLinkTimeout = 20000;
-  static const size_t kForceRemoveLinkTimeout = 5000;
+
+  static const size_t kForceRemoveLinkTimeout = 5000; //!< Таймаут на "мягкое" удаление соединения. Если за это время оно само не удалится, то его "жёстко" удалят
   static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 
   bool server_side_;
 
-  std::vector<PacketDataCache> packet_data_cache_;
-  std::mutex packet_data_cache_lock_;
+  std::vector<PacketDataCache> packet_data_cache_; //!< Кэш пакетов для повторной отправки
+  std::mutex packet_data_cache_lock_; //!< Блокировка для работы с кэшем packet_data_cache_
   boost::asio::steady_timer update_timer_;
 
   // Данные для вывода статистики
   std::atomic_size_t out_stream_counter_;
   std::atomic_size_t in_stream_counter_;
 
-  // Поля trunk_ping_... и trunk_packet_fault_ лочатся stat_lock_
+  // Поля статистики. Лочатся stat_lock_
   size_t trunk_ping_min_;  // Минимальное время посылки-подтверждения пакета, в
                            // микросекундах
   size_t trunk_ping_max_;  // Максимальное время посылки-подтверждения пакета
   size_t trunk_ping_summ_;  // Общее время посылки-подтверждения пакета
   size_t trunk_ping_count_;  // Количетсво посылок-подтверждений пакетов
   size_t trunk_packet_fault_;  // Количество недоставленных пакетов
+  std::atomic_flag trunk_live_ok; // Признак, что live-пакеты по транку ходят
   std::mutex stat_lock_;
 
   std::chrono::steady_clock::time_point
@@ -284,7 +301,10 @@ class TrunkClient: public TrunkLink {
         NextSend;  //!< Время посылки дублириющей посылки
   };
 
+  /*! Кэш пакетов для установки соединений с серверной частью */
   std::vector<PacketConnectCache> connect_cache_;
+
+  /*! Блокировка для кэша коннект-пакетов */
   std::mutex connect_cache_lock_;
 
   std::vector<boost::asio::ip::udp::endpoint> points_;
@@ -302,7 +322,6 @@ class TrunkClient: public TrunkLink {
   void SendConnectInformation(
       ConnectID cnt, PointID point, unsigned int timeout);
 
-  // TODO Descr
   void OnCacheResend() override;
 
   void ReceiveTrunkData();
