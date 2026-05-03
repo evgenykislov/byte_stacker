@@ -34,6 +34,8 @@ TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side)
   std::chrono::milliseconds intrv{kLiveUpdateTick};
   next_live_update_ = std::chrono::steady_clock::now() + intrv;
 
+  trunk_live_ok.test_and_set();
+
 #ifdef CONNECT_LOG
   error_log_.open(kTrunkErrorLog, std::ios_base::trunc);
 #endif
@@ -90,6 +92,7 @@ void TrunkLink::SendLivePacket() {
     // Сначала удалим мёртвые соединения
     std::chrono::milliseconds forceto{kForceRemoveLinkTimeout};
     if (curt > (item.deadlink_timeout_ + forceto)) {
+      trlog("-- FORCE REMOVE connection %s\n", uuids::to_string(item.connect_id).c_str());
       error_log_ << timemark(true) << ": force remove "
                  << uuids::to_string(item.connect_id) << " outlink"
                  << std::endl;
@@ -99,8 +102,9 @@ void TrunkLink::SendLivePacket() {
 
     assert(item.link.get());
     if (curt > item.deadlink_timeout_) {
-      //      trlog("-- Dead connect %s - removing\n",
-      //          uuids::to_string(item.connect_id).c_str());
+//      trlog("-- Dead connect %s - removing\n",
+//          uuids::to_string(item.connect_id).c_str());
+      trunk_live_ok.clear(); // Есть проблемы с live-пакетами
       item.link->Stop(0, OutLink::kStopNoLive);
       continue;
     }
@@ -166,7 +170,7 @@ void TrunkLink::SendCmdData(
   pc.info = info;
   auto curt = std::chrono::steady_clock::now();
   pc.FirstSend = curt;
-  pc.Deadline = curt + std::chrono::milliseconds(kDeadlineTimeout);
+  pc.Deadline = curt + std::chrono::milliseconds(kDeadPacketTimeout);
   pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
 
   std::unique_lock<std::mutex> lk(packet_data_cache_lock_);
@@ -212,13 +216,19 @@ StatInfo TrunkLink::GetStat() {
     res.MaxPing = trunk_ping_max_;
     res.AveragePing = trunk_ping_summ_ / trunk_ping_count_;
   }
+  res.no_live = !trunk_live_ok.test_and_set();
   // Сбросим показатели
   trunk_ping_min_ = kUndefinedSizeT;
   trunk_ping_max_ = 0;
   trunk_ping_summ_ = 0;
   trunk_ping_count_ = 0;
   trunk_packet_fault_ = 0;
+  // trunk_live_ok сбрасывается автоматически
   lks.unlock();
+
+  std::unique_lock lkc(packet_data_cache_lock_);
+  res.cache_load = packet_data_cache_.size();
+  lkc.unlock();
 
   return res;
 }
@@ -406,8 +416,7 @@ void TrunkLink::ProcessLive(uuids::uuid cnt, uint64_t written) {
   std::lock_guard lk(out_links_lock_);
   for (auto& item : out_links_) {
     if (item.connect_id == cnt) {
-      std::chrono::milliseconds intrv{kDeadLinkTimeout};
-      item.deadlink_timeout_ = std::chrono::steady_clock::now() + intrv;
+      item.deadlink_timeout_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(kDeadOutLinkTimeout);
       item.link->SetOtherSideWrittenVolume(written);
     }
   }
@@ -420,10 +429,9 @@ void TrunkLink::IntAddOutLinkWOLock(
   info.connect_id = cnt;
   info.link = link;
   info.next_index_to_trunk = 0;
-  std::chrono::milliseconds intrv{kDeadLinkTimeout};
-  info.deadlink_timeout_ = std::chrono::steady_clock::now() + intrv;
+  info.deadlink_timeout_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(kDeadOutLinkTimeout);
   out_links_.push_back(info);
-
+//  trlog("-- Add outlink %s\n", uuids::to_string(cnt).c_str());
   link->Run(this, cnt);
 }
 
@@ -445,6 +453,7 @@ std::shared_ptr<TrunkLink::PacketBuffer> TrunkLink::GetBuffer() {
   return std::make_shared<TrunkClient::PacketBuffer>();
 }
 
+
 void TrunkLink::OnCacheResend() {
   size_t deadp = 0;
   size_t resending = 0;
@@ -457,7 +466,7 @@ void TrunkLink::OnCacheResend() {
           [curt](PacketDataCache& item) { return curt > item.Deadline; });
   if (tail != packet_data_cache_.end()) {
     deadp = packet_data_cache_.end() - tail;
-    trlog("-- Removing %u deadline packets\n", (unsigned int)deadp);
+//    trlog("-- Removing %u deadline packets\n", (unsigned int)deadp);
     packet_data_cache_.erase(tail, packet_data_cache_.end());
   }
 
@@ -484,7 +493,7 @@ void TrunkLink::OnCacheResend() {
 
 
 void TrunkLink::RemoveOutLink(uuids::uuid cnt) {
-  // trlog("-- Remove outlink %s\n", uuids::to_string(cnt).c_str());
+//  trlog("-- Remove outlink %s\n", uuids::to_string(cnt).c_str());
   std::lock_guard lk(out_links_lock_);
   auto tail = std::remove_if(out_links_.begin(), out_links_.end(),
       [cnt](OutLinkInfo info) { return cnt == info.connect_id; });
@@ -526,8 +535,8 @@ void TrunkClient::SendConnectInformation(
   PacketConnectCache pc;
   pc.info = info;
   auto curt = std::chrono::steady_clock::now();
-  pc.Deadline = curt + std::chrono::milliseconds(kDeadlineTimeout);
-  pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+  pc.Deadline = curt + std::chrono::milliseconds(kDeadOutLinkTimeout);
+  pc.NextSend = curt + std::chrono::milliseconds(kResendConnectTimeout);
 
   std::unique_lock<std::mutex> lk(connect_cache_lock_);
   connect_cache_.push_back(pc);
@@ -545,24 +554,22 @@ void TrunkClient::OnCacheResend() {
   std::lock_guard<std::mutex> lk(connect_cache_lock_);
   auto curt = std::chrono::steady_clock::now();
 
+  // Удалим протухшие коннект-пакеты
   auto tail = std::remove_if(connect_cache_.begin(), connect_cache_.end(),
       [curt](PacketConnectCache& item) { return curt > item.Deadline; });
   if (tail != connect_cache_.end()) {
-    trlog("-- Removing %u deadline connects\n", connect_cache_.end() - tail);
+    // trlog("-- Removing %u pre-connect-packets\n", connect_cache_.end() - tail);
     connect_cache_.erase(tail, connect_cache_.end());
   }
 
 
   for (auto& item : connect_cache_) {
-    // TODO process deadline ????
-
     if (item.NextSend > curt) {
       continue;
     }
-    item.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+    item.NextSend = curt + std::chrono::milliseconds(kResendConnectTimeout);
     SendPacket(item.info);
 
-    // TRACE
     //    trlog("-- ReSend connect information for id %s\n",
     //        uuids::to_string(item.info.CtxID).c_str());
   }

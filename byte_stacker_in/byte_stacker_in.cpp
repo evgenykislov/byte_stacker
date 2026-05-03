@@ -21,7 +21,7 @@ namespace this_coro = boost::asio::this_coro;
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
 const size_t kPoolSize = 4;
-const int kInformationInterval = 10000;
+const int kInformationInterval = 1000;
 
 
 void PrintHelp() {
@@ -174,6 +174,15 @@ int main(int argc, char** argv) {
             [&stop_flag]() { return stop_flag; })) {
       auto stat = trc.GetStat();
 
+      // Обязательная часть
+      if (stat.no_live) {
+        // Есть проблемы с подключением
+        tout(": WARNING: Trunk doesn't work! Check internet connection!\n");
+      }
+
+      // Дополнительная часть
+#if 0
+      // Вывод общей статистики
       auto ospeed = (unsigned int)(stat.StreamToOutLinks * 1000 / 1024 /
                                    kInformationInterval);
       auto ispeed = (unsigned int)(stat.StreamFromOutLinks * 1000 / 1024 /
@@ -181,9 +190,10 @@ int main(int argc, char** argv) {
       auto cnt = (unsigned int)(stat.ConnectAmount);
       tout(
           ": FAULT: %8u | Local: %8u kBytes/s | Trunk: %8u kBytes/s | "
-          "Connects: %8u | Ping(min,avg,max): %.1f/%.1f/%.1f\n",
+          "Connects: %8u | Ping(min,avg,max): %.1f/%.1f/%.1f | Cache: %8u\n",
           stat.FauldPacket, ospeed, ispeed, cnt, stat.MinPing / 1000.0,
-          stat.AveragePing / 1000.0, stat.MaxPing / 1000.0);
+          stat.AveragePing / 1000.0, stat.MaxPing / 1000.0, stat.cache_load);
+#endif
     }
     sl.unlock();
 
