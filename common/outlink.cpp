@@ -30,6 +30,7 @@ OutLink::OutLink(boost::asio::ip::tcp::socket&& socket)
       hoster_(nullptr),
       read_processing_(false),
       write_processing_(false),
+      connected_socket_(true),
       written_volume_(0),
       otherside_written_volume_(0),
       read_volume_(0),
@@ -97,6 +98,7 @@ OutLink::OutLink(
       hoster_(nullptr),
       read_processing_(false),
       write_processing_(false),
+      connected_socket_(false),
       written_volume_(0),
       otherside_written_volume_(0),
       read_volume_(0),
@@ -147,16 +149,22 @@ void OutLink::RequestRead() {
 void OutLink::RequestReadProcessing(
     const boost::system::error_code& err, std::size_t bytes_transferred) {
   //        trlog("-- Read some from outlink socket\n");
-  // Вне зависимости от ошибок чтения, если есть вычитанные данные - их
-  // обрабатываем
-  if (bytes_transferred > 0) {
-    read_volume_ += bytes_transferred;
-    LogWrite("Read %" PRIu64 " bytes", read_volume_.load());
-    assert(hoster_);
-    hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
-  }
+  if (!err) {
+    // Пришли данные
+    if (bytes_transferred > 0) {
+      read_volume_ += bytes_transferred;
+      LogWrite("Read %" PRIu64 " bytes", read_volume_.load());
+      assert(hoster_);
+      hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
+    }
+  } else {
+    // Есть ошибки
+    assert(err);
 
-  if (err) {
+    if (err == boost::asio::error::eof || err == boost::asio::error::connection_reset || err == boost::asio::error::connection_aborted) {
+      // Соединение закрыто. По тем или иным причинам
+      connected_socket_ = false;
+    }
     // Ошибка чтения. Обычные ситуации:
     // - закрыто соединение (boost::asio::error::eof)
     // - операция прервана. например, закрывается сам сокет
@@ -164,6 +172,7 @@ void OutLink::RequestReadProcessing(
     // - другие тоже бывают (ресурсы отобрали и т.д.)
     // trlog("-- Read error of outlink: %s\n",
     // err.message().c_str());
+
     read_processing_ = false;
     CancelReadWrite();
     CheckReadyClose();
@@ -222,6 +231,7 @@ void OutLink::RequestConnectProcessing(const boost::system::error_code& error) {
     //    trlog("-- Connected. Start reading/writing\n");
 
     read_processing_ = true;
+    connected_socket_ = true;
     RequestRead();
     write_processing_ = true;
     RequestWrite();
@@ -318,10 +328,15 @@ void OutLink::CheckReadyCloseProcessing() {
       // Ранее закрытие ещё не вызывалось
       if (socket_.is_open()) {
         boost::system::error_code error;
-        socket_.shutdown(boost::asio::socket_base::shutdown_both, error);
-        if (error) {
-          trlog("Socket shutdown returns error: %s\n", error.message().c_str());
+
+        // Для подключенного сокета вызываем shutdown
+        if (connected_socket_) {
+          socket_.shutdown(boost::asio::socket_base::shutdown_both, error);
+          if (error) {
+            trlog("Socket shutdown returns error: %s\n", error.message().c_str());
+          }
         }
+
         socket_.close(error);
         if (error) {
           trlog("Socket close returns error: %s\n", error.message().c_str());
@@ -355,7 +370,9 @@ void OutLink::ResolverProcessing(const boost::system::error_code& err,
 }
 
 
-OutLink::~OutLink() { assert(!socket_.is_open()); }
+OutLink::~OutLink() {
+  // Возможно удаление с открытым сокетом, когда сделали force-закрытие по доптаймауту
+}
 
 void OutLink::Run(TrunkLink* hoster, ConnectID cnt) {
   assert(hoster);
