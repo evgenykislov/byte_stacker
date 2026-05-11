@@ -131,6 +131,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
 
   std::atomic_bool read_processing_;
   std::atomic_bool write_processing_;
+  std::atomic_bool connected_socket_; //!< Признак, что сокет с установленным соединением
+
   std::atomic_uint64_t
       written_volume_;  //!< Общий записанный вовне объём данных
   std::atomic_uint64_t
