@@ -9,7 +9,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 
 set(SOURCES_FILES
-  "block_resources_run.cpp"
   "close_connect.cpp"
   "fixture_direct_pipe.cpp"
   "set_connect.cpp"

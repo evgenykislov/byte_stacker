@@ -11,6 +11,12 @@ PROC_IN=-1
 PROC_OUT=-1
 
 
+if [[ -z "${BIN_PATH}" ]]; then
+  echo "Fixture needs BIN_PATH variable. It should point to executable files folder"
+  exit 1
+fi
+
+
 function setup() {
   ${BIN_PATH}/byte_stacker_in --local1=127.0.0.2:30001 --local2=127.0.0.2:30002 --trunk=127.0.0.2:40001 &
   PROC_IN=$!
