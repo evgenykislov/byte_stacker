@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
     boost::asio::io_context ctx;
     // Переменная на остановку
     std::condition_variable stop_var;
-    bool stop_flag;
+    bool stop_flag = false;
     std::mutex stop_lock;
 
     TrunkClient trc(ctx, trp);
