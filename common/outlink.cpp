@@ -81,7 +81,14 @@ void OutLink::FillNetworkBuffer() {
 
 
 void OutLink::CancelReadWrite() {
-  socket_.cancel();
+  if (connected_socket_) {
+    try {
+      socket_.cancel();
+    } catch (std::exception& err) {
+      // TODO Error message
+      std::cerr << "Socket cancel error: " << err.what() << std::endl;
+    }
+  }
   std::lock_guard lk(write_chunks_lock_);
   stop_write_immediate_ = true;
   write_idle_timer_.cancel();
@@ -161,7 +168,7 @@ void OutLink::RequestReadProcessing(
     // Есть ошибки
     assert(err);
 
-    if (err == boost::asio::error::eof || err == boost::asio::error::connection_reset || err == boost::asio::error::connection_aborted) {
+    if (err == boost::asio::error::eof || err == boost::asio::error::connection_reset || err == boost::asio::error::connection_aborted || err == boost::asio::error::operation_aborted) {
       // Соединение закрыто. По тем или иным причинам
       connected_socket_ = false;
     }
