@@ -81,14 +81,12 @@ void OutLink::FillNetworkBuffer() {
 
 
 void OutLink::CancelReadWrite() {
-  if (connected_socket_) {
-    try {
-      socket_.cancel();
-    } catch (std::exception& err) {
-      // TODO Error message
-      std::cerr << "Socket cancel error: " << err.what() << std::endl;
-    }
-  }
+  boost::system::error_code err;
+  socket_.cancel(err);
+  // Отмена всех операций может вернуть ошибку - это штатное поведение.
+  // Скорее всего, где уже ранее вызвался cancel() на сокете
+  // Ошибку не обрабатываем
+
   std::lock_guard lk(write_chunks_lock_);
   stop_write_immediate_ = true;
   write_idle_timer_.cancel();
@@ -168,7 +166,9 @@ void OutLink::RequestReadProcessing(
     // Есть ошибки
     assert(err);
 
-    if (err == boost::asio::error::eof || err == boost::asio::error::connection_reset || err == boost::asio::error::connection_aborted || err == boost::asio::error::operation_aborted) {
+    if (err == boost::asio::error::operation_aborted) {
+      // Отменили все операции: кто-то вызвал cancel(). Ничего не делаем.
+    } else if (err == boost::asio::error::eof || err == boost::asio::error::connection_reset || err == boost::asio::error::connection_aborted) {
       // Соединение закрыто. По тем или иным причинам
       connected_socket_ = false;
     }
