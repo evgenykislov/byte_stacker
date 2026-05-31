@@ -85,9 +85,10 @@ void TrunkLink::SendLivePacket() {
   std::chrono::milliseconds intrv{kLiveUpdateTick};
   next_live_update_ = curt + intrv;
 
-  // Рассылаем live-пакеты
+  // Рассылаем live-пакеты. И отслеживаем мёртвые соединения
   // trlog("LIVE-LIVE-LIVE\n");
-  std::lock_guard lk(out_links_lock_);
+  std::vector<uuids::uuid> dead_cnt; //!< Мёртвые соединения - на удаление
+  std::unique_lock lk(out_links_lock_);
   for (auto& item : out_links_) {
     // Сначала удалим мёртвые соединения
     std::chrono::milliseconds forceto{kForceRemoveLinkTimeout};
@@ -96,7 +97,7 @@ void TrunkLink::SendLivePacket() {
       error_log_ << timemark(true) << ": force remove "
                  << uuids::to_string(item.connect_id) << " outlink"
                  << std::endl;
-      item.link.reset();
+      dead_cnt.push_back(item.connect_id);
       continue;
     }
 
@@ -121,6 +122,12 @@ void TrunkLink::SendLivePacket() {
     pi.PacketData = buf;
     pi.PacketSize = sizeof(PacketLive);
     SendPacket(pi);
+  }
+  lk.unlock();
+
+  // Удалим мёртвые соединения
+  for (auto& id: dead_cnt) {
+    RemoveOutLink(id);
   }
 }
 
