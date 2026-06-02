@@ -19,6 +19,7 @@ set(SOURCE_FILES
   "byte_stacker_in.cpp"
   "../common/outlink.cpp"
   "../common/parser.cpp"
+  "../common/settings.cpp"
   "../common/trunklink.cpp"
 )
 
@@ -27,6 +28,7 @@ set(HEADER_FILES
   "../common/outlink.h"
   "../common/data.h"
   "../common/parser.h"
+  "../common/settings.h"
   "../common/trace.h"
   "../common/trunklink.h"
 )

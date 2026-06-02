@@ -12,6 +12,7 @@
 #include "inlink.h"
 #include "outlink.h"
 #include "parser.h"
+#include "settings.h"
 #include "trace.h"
 #include "trunklink.h"
 
@@ -20,15 +21,22 @@ namespace this_coro = boost::asio::this_coro;
 
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
+const std::string kSettingsPrefix = "--settings=";
 const size_t kPoolSize = 4;
 const int kInformationInterval = 1000;
 
 
 void PrintHelp() {
-  std::cout << "byte_stacker_in" << std::endl;
-  std::cout << "byte_stacker_in --local1=ip:port [--local2=ip:port ...] "
-               "--trunk=ip:port1,port2..."
-            << std::endl;
+  std::cout << \
+  "\
+Utility byte_stacker_in\n\
+Usage:\n\
+byte_stacker_in --local1=ip:port [--local2=ip:port ...]\n\
+    --trunk=ip:port1,port2... --settings=file-name\n\
+\n\
+Options:\n\
+  --settings speficify file name with settings\n\
+  ";
 }
 
 
