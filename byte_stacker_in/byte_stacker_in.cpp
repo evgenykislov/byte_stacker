@@ -32,7 +32,7 @@ void PrintHelp() {
 Utility byte_stacker_in\n\
 Usage:\n\
 byte_stacker_in --local1=ip:port [--local2=ip:port ...]\n\
-    --trunk=ip:port1,port2... --settings=file-name\n\
+    --trunk=ip:port1,port2... [--settings=file-name]\n\
 \n\
 Options:\n\
   --settings speficify file name with settings\n\
@@ -115,9 +115,12 @@ int main(int argc, char** argv) {
   std::map<PointID, bai::tcp::endpoint>
       lps;  //!< Локальные точки для приёма подключений
   std::vector<bai::udp::endpoint> trp;  //!< Транковые точки для запроса данных
+  Settings cfg; //!< Настройки программы из конфигурационного файла
 
+  // Разбор аргументов командной строки
   for (int i = 1; i < argc; ++i) {
     std::string a(argv[i]);
+    std::string v;
 
     if (a.starts_with(kLocalPrefix)) {
       bai::tcp::endpoint ep;
@@ -131,6 +134,14 @@ int main(int argc, char** argv) {
       if (!ParseTrunkPoint(a.substr(kTrunkPrefix.size()), trp)) {
         return 2;
       }
+    } else if (CheckPrefix(kSettingsPrefix, a, v)) {
+      std::filesystem::path p(v);
+      if (LoadSettings(std::filesystem::path(v), cfg)) {
+        std::wcerr << "WARNING: settings file contains some errors" << std::endl;
+      }
+    } else {
+      std::cerr << "ERROR: Unknown argument '" << a << "'" << std::endl;
+      return 2;
     }
   }
 
