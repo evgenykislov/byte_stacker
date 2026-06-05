@@ -106,10 +106,21 @@ bool ParseTrunkPoint(std::string arg_wo_prefix,
 }
 
 
-bool CheckPrefix(
-    const std::string prefix, std::string arg, std::string& value) {
+bool CheckPrefix(std::string prefix, std::string arg, std::string& value) {
   if (arg.substr(0, prefix.size()) == prefix) {
     value = arg.substr(prefix.size());
+    return true;
+  }
+  return false;
+}
+
+
+bool ParseBool(std::string strvalue, bool& bvalue) {
+  if (strvalue == "true") {
+    bvalue = true;
+    return true;
+  } else if (strvalue == "false") {
+    bvalue = false;
     return true;
   }
   return false;

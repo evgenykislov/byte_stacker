@@ -1,9 +1,38 @@
 #include "settings.h"
 
-void DefaultSettings(Settings& cfg) {}
+#include <fstream>
+#include <iostream>
+
+#include "parser.h"
+
+const std::string kLogOutlinkPacketPrefix = "log.outlink=";
+
+
+void DefaultSettings(Settings& cfg) {
+  cfg.LogOutlinkPacket = false;
+
+}
 
 bool LoadSettings(std::filesystem::path cfg_file, Settings& cfg) {
-  return false;
+  std::ifstream f(cfg_file);
+
+  if (!f) {
+    std::cerr << "Failed open cfg file '" << cfg_file << "'" << std::endl;
+    return false;
+  }
+
+  std::string line;
+  std::string v;
+  while (std::getline(f, line)) {
+    if (CheckPrefix(kLogOutlinkPacketPrefix, line, v)) {
+      if (!ParseBool(v, cfg.LogOutlinkPacket)) {
+        std::cerr << "Config: bad value '" << line << "'" << std::endl;
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 void PrintSettingsHelp() {}
