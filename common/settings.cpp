@@ -6,12 +6,12 @@
 #include "parser.h"
 
 const std::string kLogOutlinkPacketPrefix = "log.outlink=";
+const std::string kSettingsHelp = R"(
+log.outlink=true|false - enable logging of all outlink packets with timemark. Default: false
+)";
 
 
-void DefaultSettings(Settings& cfg) {
-  cfg.LogOutlinkPacket = false;
-
-}
+void DefaultSettings(Settings& cfg) { cfg.LogOutlinkPacket = false; }
 
 bool LoadSettings(std::filesystem::path cfg_file, Settings& cfg) {
   std::ifstream f(cfg_file);
@@ -35,4 +35,4 @@ bool LoadSettings(std::filesystem::path cfg_file, Settings& cfg) {
   return true;
 }
 
-void PrintSettingsHelp() {}
+void PrintSettingsHelp() { std::cout << kSettingsHelp << std::endl; }
