@@ -8,12 +8,14 @@
 
 #include "outlink.h"
 #include "parser.h"
+#include "settings.h"
 #include "trace.h"
 #include "trunklink.h"
 
 namespace bai = boost::asio::ip;
 
 const std::string kExternalPrefix = "--external";
+const std::string kSettingsPrefix = "--settings=";
 const std::string kTrunkPrefix = "--trunk=";
 const size_t kPoolSize = 4;
 const int kInformationInterval = 10000;
@@ -36,9 +38,12 @@ int main(int argc, char** argv) {
   std::map<PointID, AddressPortPoint> eps;  //!< Внешние точки коннекта
   std::vector<std::vector<bai::udp::endpoint>>
       trp;  //!< Транковые точки для обмена данными
+  Settings cfg;
+  DefaultSettings(cfg);
 
   for (int i = 1; i < argc; ++i) {
     std::string a(argv[i]);
+    std::string v;
 
     if (a.starts_with(kExternalPrefix)) {
       PointID id;
@@ -55,6 +60,16 @@ int main(int argc, char** argv) {
         return 2;
       }
       trp.push_back(st);
+    } else if (CheckPrefix(kSettingsPrefix, a, v)) {
+      std::filesystem::path p(v);
+      if (!LoadSettings(std::filesystem::path(v), cfg)) {
+        DefaultSettings(cfg);
+        std::wcerr
+            << "WARNING: settings file contains some errors. Use default values"
+            << std::endl;
+      }
+    } else {
+      // TODO unknow argument? what to do?
     }
   }
 
@@ -77,7 +92,8 @@ int main(int argc, char** argv) {
     std::mutex stop_lock;
 
     TrunkServer trs(
-        ctx, trp, [&eps, &ctx](PointID point) -> std::shared_ptr<OutLink> {
+        ctx, trp,
+        [&eps, &ctx, &cfg](PointID point) -> std::shared_ptr<OutLink> {
           auto it = eps.find(point);
           if (it == eps.end()) {
             return nullptr;
@@ -85,11 +101,12 @@ int main(int argc, char** argv) {
 
           try {
             return OutLink::CreateOutLink(
-                ctx, it->second.Address, it->second.Port);
+                ctx, it->second.Address, it->second.Port, cfg);
           } catch (...) {
           }
           return nullptr;
-        });
+        },
+        cfg);
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {

@@ -12,6 +12,7 @@
 #include "inlink.h"
 #include "outlink.h"
 #include "parser.h"
+#include "settings.h"
 #include "trace.h"
 #include "trunklink.h"
 
@@ -20,15 +21,21 @@ namespace this_coro = boost::asio::this_coro;
 
 const std::string kLocalPrefix = "--local";
 const std::string kTrunkPrefix = "--trunk=";
+const std::string kSettingsPrefix = "--settings=";
 const size_t kPoolSize = 4;
 const int kInformationInterval = 1000;
 
 
 void PrintHelp() {
-  std::cout << "byte_stacker_in" << std::endl;
-  std::cout << "byte_stacker_in --local1=ip:port [--local2=ip:port ...] "
-               "--trunk=ip:port1,port2..."
-            << std::endl;
+  std::cout << "\
+Utility byte_stacker_in\n\
+Usage:\n\
+byte_stacker_in --local1=ip:port [--local2=ip:port ...]\n\
+    --trunk=ip:port1,port2... [--settings=file-name]\n\
+\n\
+Options:\n\
+  --settings speficify file name with settings\n\
+  ";
 }
 
 
@@ -37,13 +44,13 @@ void PrintHelp() {
 \param id идентификатор точки подключения (может быть несколько подключений для
 одной и той-же точки)
 \param socket подключенный tcp сокет новоко соединения */
-void RegisterNewConnection(
-    TrunkClient& trc, PointID id, bai::tcp::socket&& socket) {
+void RegisterNewConnection(TrunkClient& trc, PointID id,
+    bai::tcp::socket&& socket, const Settings& cfg) {
   ConnectID cnt;
   assert(cnt.is_nil());
 
   try {
-    auto ol = OutLink::CreateOutLink(std::move(socket));
+    auto ol = OutLink::CreateOutLink(std::move(socket), cfg);
     trc.AddConnect(id, ol);
   } catch (std::exception&) {
     // Незарегистрировали. Просто выходим
@@ -58,28 +65,30 @@ void RegisterNewConnection(
 \param trc клиентский обработчик, в котором регистрируются новые соединения
 \param id идентификатор точки, задаётся в командной строке */
 void RequestAccept(boost::asio::io_context& ctx,
-    std::shared_ptr<bai::tcp::acceptor> acp, TrunkClient& trc, PointID id) {
+    std::shared_ptr<bai::tcp::acceptor> acp, TrunkClient& trc, PointID id,
+    const Settings& cfg) {
   auto socket = std::make_shared<bai::tcp::socket>(ctx);
-  acp->async_accept(*socket,
-      [&ctx, &trc, socket, acp, id](const boost::system::error_code& error) {
-        if (!error) {
-          // Получили новое соединение. Регистрируем, работаем
-          RegisterNewConnection(trc, id, std::move(*socket.get()));
-        } else if (error == boost::asio::error::connection_aborted) {
-          // Соединение пришло и сразу разорвалось. Это некритично. Продолжаем работу
-        } else if (error == boost::asio::error::operation_aborted) {
-          // Штатно завершаем работу
-          return;
-        } else {
-          // Все остальные ошибки критичные. Выходим
-          trlog("ERROR: can't accept to point %u: %s\n", id,
-              error.message().c_str());
-          return;
-        }
+  acp->async_accept(*socket, [&ctx, &trc, socket, acp, id, &cfg](
+                                 const boost::system::error_code& error) {
+    if (!error) {
+      // Получили новое соединение. Регистрируем, работаем
+      RegisterNewConnection(trc, id, std::move(*socket.get()), cfg);
+    } else if (error == boost::asio::error::connection_aborted) {
+      // Соединение пришло и сразу разорвалось. Это некритично. Продолжаем
+      // работу
+    } else if (error == boost::asio::error::operation_aborted) {
+      // Штатно завершаем работу
+      return;
+    } else {
+      // Все остальные ошибки критичные. Выходим
+      trlog(
+          "ERROR: can't accept to point %u: %s\n", id, error.message().c_str());
+      return;
+    }
 
-        // Продолжаем принимать новые подключения
-        RequestAccept(ctx, acp, trc, id);
-      });
+    // Продолжаем принимать новые подключения
+    RequestAccept(ctx, acp, trc, id, cfg);
+  });
 }
 
 
@@ -90,10 +99,11 @@ void RequestAccept(boost::asio::io_context& ctx,
 \param id идентификатор точки, задаётся в командной строке
 \param point точка приёма подключений
 \return акцептор, на котором уже ожидаютсмя подключения */
-std::shared_ptr<bai::tcp::acceptor> ListenLocalPoint(boost::asio::io_context& ctx, TrunkClient& trc,
-    PointID id, boost::asio::ip::tcp::endpoint point) {
+std::shared_ptr<bai::tcp::acceptor> ListenLocalPoint(
+    boost::asio::io_context& ctx, TrunkClient& trc, PointID id,
+    boost::asio::ip::tcp::endpoint point, const Settings& cfg) {
   auto acceptor = std::make_shared<bai::tcp::acceptor>(ctx, point);
-  RequestAccept(ctx, acceptor, trc, id);
+  RequestAccept(ctx, acceptor, trc, id, cfg);
   return acceptor;
 }
 
@@ -107,9 +117,13 @@ int main(int argc, char** argv) {
   std::map<PointID, bai::tcp::endpoint>
       lps;  //!< Локальные точки для приёма подключений
   std::vector<bai::udp::endpoint> trp;  //!< Транковые точки для запроса данных
+  Settings cfg;  //!< Настройки программы из конфигурационного файла
+  DefaultSettings(cfg);
 
+  // Разбор аргументов командной строки
   for (int i = 1; i < argc; ++i) {
     std::string a(argv[i]);
+    std::string v;
 
     if (a.starts_with(kLocalPrefix)) {
       bai::tcp::endpoint ep;
@@ -123,6 +137,17 @@ int main(int argc, char** argv) {
       if (!ParseTrunkPoint(a.substr(kTrunkPrefix.size()), trp)) {
         return 2;
       }
+    } else if (CheckPrefix(kSettingsPrefix, a, v)) {
+      std::filesystem::path p(v);
+      if (!LoadSettings(std::filesystem::path(v), cfg)) {
+        DefaultSettings(cfg);
+        std::wcerr
+            << "WARNING: settings file contains some errors. Use default values"
+            << std::endl;
+      }
+    } else {
+      std::cerr << "ERROR: Unknown argument '" << a << "'" << std::endl;
+      return 2;
     }
   }
 
@@ -143,7 +168,7 @@ int main(int argc, char** argv) {
     bool stop_flag = false;
     std::mutex stop_lock;
 
-    TrunkClient trc(ctx, trp);
+    TrunkClient trc(ctx, trp, cfg);
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
@@ -156,7 +181,7 @@ int main(int argc, char** argv) {
     // Подготовка акцепторов
     std::vector<std::shared_ptr<bai::tcp::acceptor>> acceptors;
     for (auto& p : lps) {
-      auto acp = ListenLocalPoint(ctx, trc, p.first, p.second);
+      auto acp = ListenLocalPoint(ctx, trc, p.first, p.second, cfg);
       acceptors.push_back(acp);
     }
 
@@ -200,7 +225,7 @@ int main(int argc, char** argv) {
     // -----------------
     // Останавливаем приложение
 
-    for (auto i: acceptors) {
+    for (auto i : acceptors) {
       boost::system::error_code ec;
       i->close(ec);
       if (ec) {

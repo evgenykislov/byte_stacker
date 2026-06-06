@@ -24,6 +24,7 @@ struct AddressPortPoint {
 
 
 class TrunkLink;
+class Settings;
 
 /*! \class IOutLink класс для управления внешними tcp-соединениями.
 Экземпляр создаётся либо на основе подключенного сокета, либо на основе точки
@@ -39,9 +40,9 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   // Функции конструирования экземпляров. Описание см. для соответствующих
   // приватных конструкторов
   static std::shared_ptr<OutLink> CreateOutLink(
-      boost::asio::ip::tcp::socket&& socket);
-  static std::shared_ptr<OutLink> CreateOutLink(
-      boost::asio::io_context& ctx, std::string address, uint16_t port);
+      boost::asio::ip::tcp::socket&& socket, const Settings& cfg);
+  static std::shared_ptr<OutLink> CreateOutLink(boost::asio::io_context& ctx,
+      std::string address, uint16_t port, const Settings& cfg);
 
 
   virtual ~OutLink();
@@ -93,7 +94,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
 
   /*! Конструктор экземпляра на основе сокета с установленным соединением
   \param socket сокет с соединением */
-  OutLink(boost::asio::ip::tcp::socket&& socket);
+  OutLink(boost::asio::ip::tcp::socket&& socket, const Settings& cfg);
 
   /*! Конструктор экземпляра на основе адреса и порта (например mysite.com:80).
   Подключение выполняется автоматически (и асинхронно) при вызове функции Run.
@@ -103,7 +104,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   \param address адрес для подключения. Может быть как явный ip-адрес, так и имя
   сайта
   \param port порт для подключения */
-  OutLink(boost::asio::io_context& ctx, std::string address, uint16_t port);
+  OutLink(boost::asio::io_context& ctx, std::string address, uint16_t port,
+      const Settings& cfg);
 
 
   static const size_t kChunkSize = 800;
@@ -128,10 +130,14 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   std::list<boost::asio::ip::tcp::endpoint> resolved_points_;
   TrunkLink* hoster_;
   ConnectID selfid_;
+  std::string selfid_str_;
+
+  const Settings& cfg_settings_;
 
   std::atomic_bool read_processing_;
   std::atomic_bool write_processing_;
-  std::atomic_bool connected_socket_; //!< Признак, что сокет с установленным соединением
+  std::atomic_bool
+      connected_socket_;  //!< Признак, что сокет с установленным соединением
 
   std::atomic_uint64_t
       written_volume_;  //!< Общий записанный вовне объём данных

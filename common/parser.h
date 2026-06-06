@@ -37,7 +37,11 @@ bool ParseTrunkPoint(std::string arg_wo_prefix,
 \param arg исходный аргумент
 \param value остаток аргумента
 \return признак, что аргумент подходит под префикс */
-bool CheckPrefix(const std::string prefix, std::string arg, std::string& value);
+bool CheckPrefix(std::string prefix, std::string arg, std::string& value);
+
+
+// TODO
+bool ParseBool(std::string strvalue, bool& bvalue);
 
 
 // TODO Description

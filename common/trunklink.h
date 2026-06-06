@@ -28,7 +28,7 @@ enum TrunkCommand : uint32_t {
 
 const size_t kConnectIDSize = 16;
 
-const unsigned int kResendTimeout = 300; //!< Интервал перепосылки пакетов
+const unsigned int kResendTimeout = 300;  //!< Интервал перепосылки пакетов
 
 /*! Интервал перепосылки коннект-пакетов (создания нового соединения) */
 const unsigned int kResendConnectTimeout = 150;
@@ -82,18 +82,19 @@ struct StatInfo {
   size_t MaxPing;
   size_t AveragePing;
   size_t FauldPacket;
-  size_t cache_load; // Количество кэшированных пакетов для повторной отправки
-  bool no_live; // Признак, что были попытки соединения без подтверждения
+  size_t cache_load;  // Количество кэшированных пакетов для повторной отправки
+  bool no_live;  // Признак, что были попытки соединения без подтверждения
 };
 
 class OutLink;
-
+class Settings;
 
 /*! \class TrunkLink Общая часть алгоритмов транковой связи. TrunkLink не
 предназначен для самостоятельного использвоания, только как базовый класс */
 class TrunkLink {
  public:
-  TrunkLink(boost::asio::io_context& ctx, bool server_side);
+  TrunkLink(
+      boost::asio::io_context& ctx, bool server_side, const Settings& cfg);
 
   virtual ~TrunkLink() {}
 
@@ -138,6 +139,8 @@ class TrunkLink {
   // Массив закрывается out_links_lock_, которая заявлена как protected
   std::vector<OutLinkInfo> out_links_;
   std::mutex out_links_lock_;
+
+  const Settings& cfg_settings_;
 
   // TODO parameter client - remove ???
   void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
@@ -219,13 +222,17 @@ class TrunkLink {
   static const size_t kUpdateTick = 100;
   static const size_t kLiveUpdateTick = 300;
 
-  static const size_t kForceRemoveLinkTimeout = 5000; //!< Таймаут на "мягкое" удаление соединения. Если за это время оно само не удалится, то его "жёстко" удалят
+  static const size_t kForceRemoveLinkTimeout =
+      5000;  //!< Таймаут на "мягкое" удаление соединения. Если за это время оно
+             //!< само не удалится, то его "жёстко" удалят
   static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 
   bool server_side_;
 
-  std::vector<PacketDataCache> packet_data_cache_; //!< Кэш пакетов для повторной отправки
-  std::mutex packet_data_cache_lock_; //!< Блокировка для работы с кэшем packet_data_cache_
+  std::vector<PacketDataCache>
+      packet_data_cache_;  //!< Кэш пакетов для повторной отправки
+  std::mutex packet_data_cache_lock_;  //!< Блокировка для работы с кэшем
+                                       //!< packet_data_cache_
   boost::asio::steady_timer update_timer_;
 
   // Данные для вывода статистики
@@ -239,7 +246,7 @@ class TrunkLink {
   size_t trunk_ping_summ_;  // Общее время посылки-подтверждения пакета
   size_t trunk_ping_count_;  // Количетсво посылок-подтверждений пакетов
   size_t trunk_packet_fault_;  // Количество недоставленных пакетов
-  std::atomic_flag trunk_live_ok; // Признак, что live-пакеты по транку ходят
+  std::atomic_flag trunk_live_ok;  // Признак, что live-пакеты по транку ходят
   std::mutex stat_lock_;
 
   std::chrono::steady_clock::time_point
@@ -273,7 +280,8 @@ class TrunkLink {
 class TrunkClient: public TrunkLink {
  public:
   TrunkClient(boost::asio::io_context& ctx,
-      const std::vector<boost::asio::ip::udp::endpoint>& trpoints);
+      const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
+      const Settings& cfg);
   virtual ~TrunkClient();
 
   /*! Добавить новое подключение.  Подключение будет добавлено, функция его\
@@ -343,7 +351,8 @@ class TrunkServer: public TrunkLink {
  public:
   TrunkServer(boost::asio::io_context& ctx,
       const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
-      std::function<std::shared_ptr<OutLink>(PointID)> link_fabric);
+      std::function<std::shared_ptr<OutLink>(PointID)> link_fabric,
+      const Settings& cfg);
   virtual ~TrunkServer();
 
   /*! Получить статистику по работе приложения */

@@ -4,6 +4,7 @@
 
 #include "inttypes.h"
 
+#include "settings.h"
 #include "trace.h"
 #include "trunklink.h"
 
@@ -13,21 +14,22 @@ const char kLogPrefix[] = "/var/log/stacker/cnt_";
 #endif
 
 std::shared_ptr<OutLink> OutLink::CreateOutLink(
-    boost::asio::ip::tcp::socket&& socket) {
-  return std::shared_ptr<OutLink>(new OutLink(std::move(socket)));
+    boost::asio::ip::tcp::socket&& socket, const Settings& cfg) {
+  return std::shared_ptr<OutLink>(new OutLink(std::move(socket), cfg));
 }
 
 
-std::shared_ptr<OutLink> OutLink::CreateOutLink(
-    boost::asio::io_context& ctx, std::string address, uint16_t port) {
-  return std::shared_ptr<OutLink>(new OutLink(ctx, address, port));
+std::shared_ptr<OutLink> OutLink::CreateOutLink(boost::asio::io_context& ctx,
+    std::string address, uint16_t port, const Settings& cfg) {
+  return std::shared_ptr<OutLink>(new OutLink(ctx, address, port, cfg));
 }
 
 
-OutLink::OutLink(boost::asio::ip::tcp::socket&& socket)
+OutLink::OutLink(boost::asio::ip::tcp::socket&& socket, const Settings& cfg)
     : socket_(std::move(socket)),
       resolver_(socket_.get_executor()),
       hoster_(nullptr),
+      cfg_settings_(cfg),
       read_processing_(false),
       write_processing_(false),
       connected_socket_(true),
@@ -94,13 +96,14 @@ void OutLink::CancelReadWrite() {
 }
 
 
-OutLink::OutLink(
-    boost::asio::io_context& ctx, std::string address, uint16_t port)
+OutLink::OutLink(boost::asio::io_context& ctx, std::string address,
+    uint16_t port, const Settings& cfg)
     : socket_(ctx),
       resolver_(ctx),
       host_(address),
       service_(std::to_string(port)),
       hoster_(nullptr),
+      cfg_settings_(cfg),
       read_processing_(false),
       write_processing_(false),
       connected_socket_(false),
@@ -136,6 +139,11 @@ void OutLink::RequestRead() {
   uint64_t dw = rv - w2;  // Данных в доставке
   if (dw > kMaxProcessingDataSize) {
     // Пока подождём
+    if (cfg_settings_.LogOutlinkPacket) {
+      std::stringstream s;
+      s << "Connect " << selfid_str_ << ": read suspened(idling)";
+      cfg_settings_.OutputLog(s.str());
+    }
     RequestReadIdle();
     return;
   }
@@ -160,6 +168,13 @@ void OutLink::RequestReadProcessing(
       read_volume_ += bytes_transferred;
       LogWrite("Read %" PRIu64 " bytes", read_volume_.load());
       assert(hoster_);
+      if (cfg_settings_.LogOutlinkPacket) {
+        std::stringstream s;
+        s << "Connect " << selfid_str_ << ": read " << bytes_transferred
+          << " bytes";
+        cfg_settings_.OutputLog(s.str());
+      }
+
       hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
     }
   } else {
@@ -168,7 +183,9 @@ void OutLink::RequestReadProcessing(
 
     if (err == boost::asio::error::operation_aborted) {
       // Отменили все операции: кто-то вызвал cancel(). Ничего не делаем.
-    } else if (err == boost::asio::error::eof || err == boost::asio::error::connection_reset || err == boost::asio::error::connection_aborted) {
+    } else if (err == boost::asio::error::eof ||
+               err == boost::asio::error::connection_reset ||
+               err == boost::asio::error::connection_aborted) {
       // Соединение закрыто. По тем или иным причинам
       connected_socket_ = false;
     }
@@ -202,6 +219,13 @@ void OutLink::RequestReadIdle() {
       selfptr->CheckReadyClose();
       return;
     }
+
+    if (selfptr->cfg_settings_.LogOutlinkPacket) {
+      std::stringstream s;
+      s << "Connect " << selfptr->selfid_str_ << ": read resuming";
+      selfptr->cfg_settings_.OutputLog(s.str());
+    }
+
     selfptr->RequestRead();
   });
 }
@@ -284,6 +308,14 @@ void OutLink::RequestWrite() {
 
   //  trlog("-- Writing %u bytes to outlink socket\n",
   //      network_write_buffer_.size());
+
+  if (cfg_settings_.LogOutlinkPacket) {
+    std::stringstream s;
+    s << "Connect " << selfid_str_ << ": start writing "
+      << network_write_buffer_.size() << " bytes";
+    cfg_settings_.OutputLog(s.str());
+  }
+
   auto selfptr = shared_from_this();
   socket_.async_write_some(boost::asio::buffer(network_write_buffer_.data(),
                                network_write_buffer_.size()),
@@ -317,6 +349,13 @@ void OutLink::RequestWriteProcessing(
   LogWrite("<- Written %" PRIu64 " bytes", written_volume_.load());
   network_write_buffer_.erase(network_write_buffer_.begin(),
       network_write_buffer_.begin() + bytes_transferred);
+  if (cfg_settings_.LogOutlinkPacket) {
+    std::stringstream s;
+    s << "Connect " << selfid_str_ << ": written " << bytes_transferred
+      << " bytes";
+    cfg_settings_.OutputLog(s.str());
+  }
+
   RequestWrite();
 }
 
@@ -340,7 +379,8 @@ void OutLink::CheckReadyCloseProcessing() {
         if (connected_socket_) {
           socket_.shutdown(boost::asio::socket_base::shutdown_both, error);
           if (error) {
-            trlog("Socket shutdown returns error: %s\n", error.message().c_str());
+            trlog(
+                "Socket shutdown returns error: %s\n", error.message().c_str());
           }
         }
 
@@ -378,13 +418,15 @@ void OutLink::ResolverProcessing(const boost::system::error_code& err,
 
 
 OutLink::~OutLink() {
-  // Возможно удаление с открытым сокетом, когда сделали force-закрытие по доптаймауту
+  // Возможно удаление с открытым сокетом, когда сделали force-закрытие по
+  // доптаймауту
 }
 
 void OutLink::Run(TrunkLink* hoster, ConnectID cnt) {
   assert(hoster);
   hoster_ = hoster;
   selfid_ = cnt;
+  selfid_str_ = uuids::to_string(cnt);
 
 #ifdef CONNECT_LOG
   std::string fn = kLogPrefix;
