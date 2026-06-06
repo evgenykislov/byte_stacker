@@ -91,7 +91,8 @@ int main(int argc, char** argv) {
     bool stop_flag = false;
     std::mutex stop_lock;
 
-    TrunkServer trs(ctx, trp,
+    TrunkServer trs(
+        ctx, trp,
         [&eps, &ctx, &cfg](PointID point) -> std::shared_ptr<OutLink> {
           auto it = eps.find(point);
           if (it == eps.end()) {
@@ -104,7 +105,8 @@ int main(int argc, char** argv) {
           } catch (...) {
           }
           return nullptr;
-        });
+        },
+        cfg);
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {

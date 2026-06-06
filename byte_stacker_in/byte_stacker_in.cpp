@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
     bool stop_flag = false;
     std::mutex stop_lock;
 
-    TrunkClient trc(ctx, trp);
+    TrunkClient trc(ctx, trp, cfg);
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
