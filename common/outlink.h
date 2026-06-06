@@ -130,6 +130,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   std::list<boost::asio::ip::tcp::endpoint> resolved_points_;
   TrunkLink* hoster_;
   ConnectID selfid_;
+  std::string selfid_str_;
 
   const Settings& cfg_settings_;
 

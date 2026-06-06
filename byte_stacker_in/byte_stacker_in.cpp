@@ -68,7 +68,7 @@ void RequestAccept(boost::asio::io_context& ctx,
     std::shared_ptr<bai::tcp::acceptor> acp, TrunkClient& trc, PointID id,
     const Settings& cfg) {
   auto socket = std::make_shared<bai::tcp::socket>(ctx);
-  acp->async_accept(*socket, [&ctx, &trc, socket, acp, id, cfg](
+  acp->async_accept(*socket, [&ctx, &trc, socket, acp, id, &cfg](
                                  const boost::system::error_code& error) {
     if (!error) {
       // Получили новое соединение. Регистрируем, работаем

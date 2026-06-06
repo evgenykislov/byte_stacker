@@ -4,6 +4,7 @@
 
 #include "inttypes.h"
 
+#include "settings.h"
 #include "trace.h"
 #include "trunklink.h"
 
@@ -138,6 +139,11 @@ void OutLink::RequestRead() {
   uint64_t dw = rv - w2;  // Данных в доставке
   if (dw > kMaxProcessingDataSize) {
     // Пока подождём
+    if (cfg_settings_.LogOutlinkPacket) {
+      std::stringstream s;
+      s << "Connect " << selfid_str_ << ": read suspened(idling)";
+      cfg_settings_.OutputLog(s.str());
+    }
     RequestReadIdle();
     return;
   }
@@ -162,6 +168,13 @@ void OutLink::RequestReadProcessing(
       read_volume_ += bytes_transferred;
       LogWrite("Read %" PRIu64 " bytes", read_volume_.load());
       assert(hoster_);
+      if (cfg_settings_.LogOutlinkPacket) {
+        std::stringstream s;
+        s << "Connect " << selfid_str_ << ": read " << bytes_transferred
+          << " bytes";
+        cfg_settings_.OutputLog(s.str());
+      }
+
       hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
     }
   } else {
@@ -206,6 +219,13 @@ void OutLink::RequestReadIdle() {
       selfptr->CheckReadyClose();
       return;
     }
+
+    if (selfptr->cfg_settings_.LogOutlinkPacket) {
+      std::stringstream s;
+      s << "Connect " << selfptr->selfid_str_ << ": read resuming";
+      selfptr->cfg_settings_.OutputLog(s.str());
+    }
+
     selfptr->RequestRead();
   });
 }
@@ -288,6 +308,14 @@ void OutLink::RequestWrite() {
 
   //  trlog("-- Writing %u bytes to outlink socket\n",
   //      network_write_buffer_.size());
+
+  if (cfg_settings_.LogOutlinkPacket) {
+    std::stringstream s;
+    s << "Connect " << selfid_str_ << ": start writing "
+      << network_write_buffer_.size() << " bytes";
+    cfg_settings_.OutputLog(s.str());
+  }
+
   auto selfptr = shared_from_this();
   socket_.async_write_some(boost::asio::buffer(network_write_buffer_.data(),
                                network_write_buffer_.size()),
@@ -321,6 +349,13 @@ void OutLink::RequestWriteProcessing(
   LogWrite("<- Written %" PRIu64 " bytes", written_volume_.load());
   network_write_buffer_.erase(network_write_buffer_.begin(),
       network_write_buffer_.begin() + bytes_transferred);
+  if (cfg_settings_.LogOutlinkPacket) {
+    std::stringstream s;
+    s << "Connect " << selfid_str_ << ": written " << bytes_transferred
+      << " bytes";
+    cfg_settings_.OutputLog(s.str());
+  }
+
   RequestWrite();
 }
 
@@ -391,6 +426,7 @@ void OutLink::Run(TrunkLink* hoster, ConnectID cnt) {
   assert(hoster);
   hoster_ = hoster;
   selfid_ = cnt;
+  selfid_str_ = uuids::to_string(cnt);
 
 #ifdef CONNECT_LOG
   std::string fn = kLogPrefix;

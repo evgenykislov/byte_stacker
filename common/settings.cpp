@@ -4,16 +4,23 @@
 #include <iostream>
 
 #include "parser.h"
+#include "trace.h"
 
 const std::string kLogOutlinkPacketPrefix = "log.outlink=";
 const std::string kSettingsHelp = R"(
 log.outlink=true|false - enable logging of all outlink packets with timemark. Default: false
 )";
 
+void DefaultOutputLog(std::string message) {
+  std::cout << timemark(true) << ": " << message << std::endl;
+}
 
-void DefaultSettings(Settings& cfg) { cfg.LogOutlinkPacket = false; }
+
+void DefaultSettings(Settings& cfg) { new (&cfg) Settings(); }
 
 bool LoadSettings(std::filesystem::path cfg_file, Settings& cfg) {
+  DefaultSettings(cfg);
+
   std::ifstream f(cfg_file);
 
   if (!f) {
@@ -31,6 +38,7 @@ bool LoadSettings(std::filesystem::path cfg_file, Settings& cfg) {
       }
     }
   }
+
 
   return true;
 }

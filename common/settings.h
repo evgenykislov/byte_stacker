@@ -3,10 +3,30 @@
 
 #include <filesystem>
 
+extern void DefaultOutputLog(std::string message);
+
 /*! Структура с настройками, заданными из командной строки или др. заполнено */
 struct Settings {
-  bool LogOutlinkPacket; //!< Логировать время посылки/приёма любого пакета с наружными соединениями
-  bool LogTrunkPacket; //!< Логировать время пакетов транка
+  bool LogOutlinkPacket;  //!< Логировать время посылки/приёма любого пакета с
+                          //!< наружными соединениями
+  bool LogTrunkPacket;  //!< Логировать время пакетов транка
+
+  // TODO Descr
+  // Не может быть nullptr
+  void (*OutputLog)(std::string message);
+
+  Settings() {
+    LogOutlinkPacket = false;
+    LogTrunkPacket = false;
+    OutputLog = DefaultOutputLog;
+  }
+
+  virtual ~Settings() {}
+
+  Settings(const Settings&) = delete;
+  Settings(Settings&&) = delete;
+  Settings& operator=(const Settings&) = delete;
+  Settings& operator=(Settings&&) = delete;
 };
 
 
@@ -21,7 +41,8 @@ void DefaultSettings(Settings& cfg);
 \return признак успешного разбора конфигурационного файла */
 bool LoadSettings(std::filesystem::path cfg_file, Settings& cfg);
 
-/*! Выводит описание всех параметров конфигурационного файла вместе с дефолтными значениями */
+/*! Выводит описание всех параметров конфигурационного файла вместе с дефолтными
+ * значениями */
 void PrintSettingsHelp();
 
 #endif

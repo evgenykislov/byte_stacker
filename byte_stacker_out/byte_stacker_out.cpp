@@ -91,8 +91,8 @@ int main(int argc, char** argv) {
     bool stop_flag = false;
     std::mutex stop_lock;
 
-    TrunkServer trs(
-        ctx, trp, [&eps, &ctx, cfg](PointID point) -> std::shared_ptr<OutLink> {
+    TrunkServer trs(ctx, trp,
+        [&eps, &ctx, &cfg](PointID point) -> std::shared_ptr<OutLink> {
           auto it = eps.find(point);
           if (it == eps.end()) {
             return nullptr;
