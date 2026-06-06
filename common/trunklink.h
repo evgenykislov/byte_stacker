@@ -99,6 +99,8 @@ class TrunkLink {
   virtual ~TrunkLink() {}
 
   // TODO Descr
+  // Допустимо указать data = nullptr (или любой другой адрес), если data_size
+  // == 0
   void SendCmdData(
       ConnectID cnt, const void* data, size_t data_size, TrunkCommand cmd);
 

@@ -10,6 +10,8 @@ struct Settings {
   bool LogOutlinkPacket;  //!< Логировать время посылки/приёма любого пакета с
                           //!< наружными соединениями
   bool LogTrunkPacket;  //!< Логировать время пакетов транка
+  bool LogFormatError;  //!< Логировать ошибки формата, размера и т.д.
+  bool LogResendPacket;  //!< Логировать перепосылку пакета
 
   // TODO Descr
   // Не может быть nullptr
@@ -18,6 +20,8 @@ struct Settings {
   Settings() {
     LogOutlinkPacket = false;
     LogTrunkPacket = false;
+    LogFormatError = false;
+    LogResendPacket = false;
     OutputLog = DefaultOutputLog;
   }
 

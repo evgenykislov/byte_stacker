@@ -8,10 +8,14 @@
 
 const std::string kLogOutlinkPacketPrefix = "log.outlink=";
 const std::string kLogTrunkPacketPrefix = "log.trunk=";
+const std::string kLogFormatErrorPrefix = "log.formaterror=";
+const std::string kLogResendPrefix = "log.resend=";
 
 const std::string kSettingsHelp = R"(
 log.outlink=true|false - enable logging of all outlink packets with timemark. Default: false
 log.trunk=true|false - enable logging of valid trunk packets with timemark. Default: false
+log.formaterror=true|false - enable logging of data format errors. Default: false
+log.resend=true|false - enable logging of packet resending. Default: false
 )";
 
 void DefaultOutputLog(std::string message) {
@@ -41,6 +45,16 @@ bool LoadSettings(std::filesystem::path cfg_file, Settings& cfg) {
       }
     } else if (CheckPrefix(kLogTrunkPacketPrefix, line, v)) {
       if (!ParseBool(v, cfg.LogTrunkPacket)) {
+        std::cerr << "Config: bad value '" << line << "'" << std::endl;
+        return false;
+      }
+    } else if (CheckPrefix(kLogFormatErrorPrefix, line, v)) {
+      if (!ParseBool(v, cfg.LogFormatError)) {
+        std::cerr << "Config: bad value '" << line << "'" << std::endl;
+        return false;
+      }
+    } else if (CheckPrefix(kLogResendPrefix, line, v)) {
+      if (!ParseBool(v, cfg.LogResendPacket)) {
         std::cerr << "Config: bad value '" << line << "'" << std::endl;
         return false;
       }

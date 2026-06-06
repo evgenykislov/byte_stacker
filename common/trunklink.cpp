@@ -169,7 +169,9 @@ void TrunkLink::SendCmdData(
   pkt->PacketCommand = cmd;
   pkt->PacketIndex = pkt_index;
   pkt->DataSize = static_cast<uint32_t>(data_size);
-  memcpy(buf.get() + sizeof(PacketData), data, data_size);
+  if (data_size > 0) {
+    memcpy(buf.get() + sizeof(PacketData), data, data_size);
+  }
 
   // Сформируем информационный блок для кэширования и т.д.
   PacketInfo info;
@@ -199,8 +201,7 @@ void TrunkLink::CloseConnect(ConnectID cnt) {
 
 
 void TrunkLink::SendDisconnectInformation(ConnectID cnt) {
-  uint8_t fake_buf;
-  SendCmdData(cnt, &fake_buf, 0, kTrunkCommandReleaseConnect);
+  SendCmdData(cnt, nullptr, 0, kTrunkCommandReleaseConnect);
 
   // trlog("-- Send disconnect information. Id: %s\n",
   //     uuids::to_string(cnt).c_str());
@@ -327,6 +328,12 @@ void TrunkLink::ProcessTrunkData(
     case kTrunkCommandReleaseConnect:
       if (data_size != sizeof(PacketData)) {
         // Неправильный формат
+        if (cfg_settings_.LogFormatError) {
+          std::stringstream s;
+          s << "Trunk Connect " << uuids::to_string(cnt)
+            << ": receive packet 'release connect' with wrong size";
+          cfg_settings_.OutputLog(s.str());
+        }
         return;
       }
 
@@ -334,6 +341,13 @@ void TrunkLink::ProcessTrunkData(
         auto pd = static_cast<const PacketData*>(hdr);
         if (pd->DataSize != 0) {
           // Ошибка формата. Данные должны быть пустые
+          if (cfg_settings_.LogFormatError) {
+            std::stringstream s;
+            s << "Trunk Connect " << uuids::to_string(cnt)
+              << ": receive packet 'release connect' with non-empty data "
+                 "(error)";
+            cfg_settings_.OutputLog(s.str());
+          }
           return;
         }
 
@@ -495,9 +509,18 @@ void TrunkLink::OnCacheResend() {
        ++it) {
     if (curt > it->NextSend) {
       // Перепосылаем пакет
+      if (cfg_settings_.LogResendPacket) {
+        std::stringstream s;
+        s << "Trunk Connect " << uuids::to_string(it->info.CtxID)
+          << ": re-send packet " << it->info.PacketID << ", "
+          << it->info.PacketSize << " bytes";
+        cfg_settings_.OutputLog(s.str());
+      }
+
       it->NextSend = curt + std::chrono::milliseconds(kResendTimeout);
-      ++resending;
       SendPacket(it->info);
+
+      ++resending;
     }
   }
   lk.unlock();

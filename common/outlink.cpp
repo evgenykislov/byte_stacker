@@ -283,6 +283,12 @@ void OutLink::RequestWrite() {
   FillNetworkBuffer();
   if (network_write_buffer_.empty()) {
     if (stop_after_all_write_) {
+      if (cfg_settings_.LogOutlinkPacket) {
+        std::stringstream s;
+        s << "Connect " << selfid_str_ << ": all data written. Cancel and Stop";
+        cfg_settings_.OutputLog(s.str());
+      }
+
       CancelReadWrite();
       write_processing_ = false;
       CheckReadyClose();
@@ -486,6 +492,12 @@ void OutLink::SendData(uint32_t chunk_id, const void* data, size_t data_size) {
 }
 
 void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
+  if (cfg_settings_.LogOutlinkPacket) {
+    std::stringstream s;
+    s << "Connect " << selfid_str_ << ": Stop outlink due to trunk request";
+    cfg_settings_.OutputLog(s.str());
+  }
+
   switch (reason) {
     case kStopReleaseCommand:
       // Корректное завершение, всё ок
