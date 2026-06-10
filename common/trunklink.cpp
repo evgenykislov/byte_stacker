@@ -126,7 +126,7 @@ void TrunkLink::SendLivePacket() {
     pi.PacketID = kEmptyPacketID;
     pi.PacketData = buf;
     pi.PacketSize = sizeof(PacketLive);
-    SendPacket(pi);
+    SendPacket(pi);  // Live-пакеты шлются всегда, даже при заполненном буфере
   }
   lk.unlock();
 
@@ -191,7 +191,7 @@ void TrunkLink::SendCmdData(
   packet_data_cache_.push_back(pc);
   lk.unlock();
 
-  SendPacket(info);
+  SendPacket(info);  // TODO сделать проверку на размер буфера
 }
 
 void TrunkLink::CloseConnect(ConnectID cnt) {
@@ -385,7 +385,7 @@ void TrunkLink::ProcessDataToOutlink(
   pi.PacketID = kEmptyPacketID;
   pi.PacketData = buf;
   pi.PacketSize = sizeof(PacketAck);
-  SendPacket(pi);
+  SendPacket(pi);  // Ack пакет шлётся всегда, вне зависимости от загрузки
   if (cfg_settings_.LogTrunkPacket) {
     std::stringstream s;
     s << "Trunk Connect " << uuids::to_string(cnt) << ": ack packet packet "
@@ -532,7 +532,7 @@ void TrunkLink::OnCacheResend() {
       }
 
       it->NextSend = curt + std::chrono::milliseconds(kResendTimeout);
-      SendPacket(it->info);
+      SendPacket(it->info);  // Перепосылка из кэша шлётся всегда
 
       ++resending;
     }
