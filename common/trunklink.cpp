@@ -386,6 +386,12 @@ void TrunkLink::ProcessDataToOutlink(
   pi.PacketData = buf;
   pi.PacketSize = sizeof(PacketAck);
   SendPacket(pi);
+  if (cfg_settings_.LogTrunkPacket) {
+    std::stringstream s;
+    s << "Trunk Connect " << uuids::to_string(cnt) << ": ack packet packet "
+      << info->PacketIndex;
+    cfg_settings_.OutputLog(s.str());
+  }
 
   // Выдадим данные на внешний линк
   auto link = GetOutLink(cnt);
@@ -399,6 +405,14 @@ void TrunkLink::ProcessDataToOutlink(
 
 void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
   // TODO IMPLEMENT
+
+  if (cfg_settings_.LogTrunkPacket) {
+    std::stringstream s;
+    s << "Trunk Connect " << uuids::to_string(cnt) << ": receive ack packet "
+      << packet_index;
+    cfg_settings_.OutputLog(s.str());
+  }
+
   size_t ping = kUndefinedSizeT;
 
   std::unique_lock lk(packet_data_cache_lock_);
