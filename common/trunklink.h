@@ -57,6 +57,9 @@ const size_t kUdpPacketOverhead =
     40;  //!< Дополнительное место, которое занимает пакет в буфере на отправку.
          //!< Как минимум 20 байт на заголовки, ip-адреса и др.
 
+/*! Возвращаемое значение свободного места в udp буфере, если буфер недоступен
+ */
+const int kUdpBufferUnavailable = INT_MIN;
 
 struct PacketHeader {
   uint8_t ConnectID[kConnectIDSize];
@@ -169,9 +172,11 @@ class TrunkLink {
       const PacketData& header, uint8_t* data, size_t data_size);
 
   /*! Возвращает размер свободного места в буфере на передачу для заданного
-  соединения \param ctx идентификатор соединения \return размер свободного места
-  в байтах */
-  virtual size_t GetAvailableBuffer(ConnectID ctx) = 0;
+  соединения. Если буфер не существует (соединение уже удалено и т.д.), то
+  возвращается размер kUdpBufferUnavailable.
+  \param ctx идентификатор соединения
+  \return размер свободного места в байтах. Размер может быть отрицательным */
+  virtual int GetAvailableBuffer(ConnectID ctx) = 0;
 
   /*! Отправить пакет по транку. Ошибки отправки не контролируются,
   переотправка должна реализовываться раньше/в другом месте
@@ -388,7 +393,7 @@ class TrunkClient: public TrunkLink {
 
   // Asio Requesters
 
-  size_t GetAvailableBuffer(ConnectID ctx) override;
+  int GetAvailableBuffer(ConnectID ctx) override;
 
   void SendPacket(PacketInfo pkt) override;
 
@@ -430,8 +435,19 @@ class TrunkServer: public TrunkLink {
     boost::asio::ip::udp::socket socket;
     std::shared_ptr<TrunkServer::PacketBuffer> buffer;
     boost::asio::ip::udp::endpoint client_holder;
+
+    // Отслеживание размера буфера на отправку
+    /*!< Cвободный размер буфера на метку времени */
+    int buffer_last_size_;
+    std::chrono::steady_clock::time_point buffer_last_time_;
+    /*!< Допустимый размер буфера на отправку для сокета. Берётся меньше
+     * реального, чтобы был запас на лив-пакеты и др. важные сообщения */
+    int socket_buffer_size_;
   };
   std::vector<ServerSocket> trunk_sockets_;
+
+  std::mutex
+      buffer_lock_;  //!< Блокировка для пересчёта свободного размера буфера
 
   /*! Информация для связи с клиеннтами по транковой связи: какой сокет
   использовать и конечную точку */
@@ -460,7 +476,7 @@ class TrunkServer: public TrunkLink {
 
   void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info) override;
 
-  size_t GetAvailableBuffer(ConnectID ctx) override;
+  int GetAvailableBuffer(ConnectID ctx) override;
 
   void SendPacket(PacketInfo pkt) override;
 

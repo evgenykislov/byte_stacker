@@ -724,7 +724,7 @@ void TrunkClient::ReceiveTrunkData() {
       });
 }
 
-size_t TrunkClient::GetAvailableBuffer(ConnectID ctx) {
+int TrunkClient::GetAvailableBuffer(ConnectID ctx) {
   std::unique_lock lk(trunk_buffer_lock_);
   auto curt = std::chrono::steady_clock::now();
   auto intr = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -789,6 +789,20 @@ TrunkServer::TrunkServer(boost::asio::io_context& ctx,
   for (size_t i = 0; i < trpoints.size(); ++i) {
     for (auto& p : trpoints[i]) {
       trunk_sockets_.emplace_back(ServerSocket{i, {ctx, p}, GetBuffer()});
+
+      ? ? ?
+          // Получим информацию о сокете
+          boost::asio::socket_base::receive_buffer_size option;
+      trunk_socket_.get_option(option);
+      int buf_size = option.value();
+      if (buf_size < kMinimalUdpBufferSize) {
+        buf_size = kMinimalUdpBufferSize;
+      }
+      trunk_socket_buffer_size_ = buf_size / 2;
+      std::unique_lock lk(trunk_buffer_lock_);
+      trunk_buffer_last_size_ = trunk_socket_buffer_size_;
+      trunk_buffer_last_time_ = std::chrono::steady_clock::now();
+      lk.unlock();
     }
   }
 
@@ -869,9 +883,33 @@ void TrunkServer::ProcessConnectData(
   lk.unlock();
 }
 
-size_t TrunkServer::GetAvailableBuffer(ConnectID ctx) {
-  // TODO Сделать расчёт по всем параметрам
-  return kMinimalUdpBufferSize;
+
+int TrunkServer::GetAvailableBuffer(ConnectID ctx) {
+  ConnectInfo info;
+  info.connect = сtx;
+
+  if (!GetClientLink(info)) {
+    // Нет информации о коннекте
+    return kUdpBufferUnavailable;
+  }
+
+  auto& ts = trunk_sockets_[info.socket_index];
+
+  std::unique_lock lk(buffer_lock_);
+  auto curt = std::chrono::steady_clock::now();
+  auto intr = std::chrono::duration_cast<std::chrono::microseconds>(
+      curt - ts.buffer_last_time_)
+                  .count();
+
+  ts.buffer_last_size_ +=
+      intr * kDefaultUdpTrafficSpeed;  // Учитываем, что со временем буфер
+                                       // освобождается
+  if (ts.buffer_last_size_ > ts.socket_buffer_size_) {
+    ts.buffer_last_size_ = ts.socket_buffer_size_;
+  }
+  ts.buffer_last_time_ = curt;
+
+  return trunk_buffer_last_size_;
 }
 
 
