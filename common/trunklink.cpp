@@ -28,6 +28,7 @@ TrunkLink::TrunkLink(
     : cfg_settings_(cfg),
       server_side_(server_side),
       update_timer_(ctx),
+      send_queue_timer_(ctx),
       out_stream_counter_(0),
       in_stream_counter_(0),
       trunk_ping_min_(kUndefinedSizeT),
@@ -45,6 +46,7 @@ TrunkLink::TrunkLink(
 #endif
 
   RequestUpdate();
+  RequestSendQueue();
 }
 
 
@@ -77,6 +79,20 @@ void TrunkLink::RequestUpdate() {
     OnCacheResend();
 
     RequestUpdate();
+  });
+}
+
+void TrunkLink::RequestSendQueue() {
+  send_queue_timer_.expires_after(std::chrono::milliseconds(kSendQueueTick));
+  send_queue_timer_.async_wait([this](const boost::system::error_code& err) {
+    if (err) {
+      // Отменили все операции, закрываем приложение
+      return;
+    }
+
+    SendPacketQueue();
+
+    RequestSendQueue();
   });
 }
 
@@ -126,7 +142,7 @@ void TrunkLink::SendLivePacket() {
     pi.PacketID = kEmptyPacketID;
     pi.PacketData = buf;
     pi.PacketSize = sizeof(PacketLive);
-    SendPacket(pi);
+    SendPacket(pi);  // Live-пакеты шлются всегда, даже при заполненном буфере
   }
   lk.unlock();
 
@@ -173,26 +189,49 @@ void TrunkLink::SendCmdData(
     memcpy(buf.get() + sizeof(PacketData), data, data_size);
   }
 
-  // Сформируем информационный блок для кэширования и т.д.
+  // Сформируем пакет в посылку
   PacketInfo info;
   info.CtxID = cnt;
   info.PacketID = pkt_index;
   info.PacketData = buf;
   info.PacketSize = static_cast<uint32_t>(sizeof(PacketData) + data_size);
 
-  PacketDataCache pc;
-  pc.info = info;
-  auto curt = std::chrono::steady_clock::now();
-  pc.FirstSend = curt;
-  pc.Deadline = curt + std::chrono::milliseconds(kDeadPacketTimeout);
-  pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
-
-  std::unique_lock<std::mutex> lk(packet_data_cache_lock_);
-  packet_data_cache_.push_back(pc);
-  lk.unlock();
-
-  SendPacket(info);
+  // Отправим пакет в очередь (дожидаться свободного буфера)
+  std::unique_lock lks(packet_send_queue_lock_);
+  packet_send_queue_.push_back(info);
+  lks.unlock();
+  SendPacketQueue();
 }
+
+void TrunkLink::SendPacketQueue() {
+  std::unique_lock lks(packet_send_queue_lock_);
+  for (auto it = packet_send_queue_.begin(); it != packet_send_queue_.end();
+      /* ничего не делаем */) {
+    auto info = *it;
+
+    auto ava = GetAvailableBuffer(info.CtxID);
+    if (ava < info.PacketSize) {
+      ++it;
+      continue;
+    }
+
+    PacketDataCache pc;
+    pc.info = info;
+    auto curt = std::chrono::steady_clock::now();
+    pc.FirstSend = curt;
+    pc.Deadline = curt + std::chrono::milliseconds(kDeadPacketTimeout);
+    pc.NextSend = curt + std::chrono::milliseconds(kResendTimeout);
+
+    std::unique_lock<std::mutex> lk(packet_data_cache_lock_);
+    packet_data_cache_.push_back(pc);
+    lk.unlock();
+
+    SendPacket(info);  // TODO сделать проверку на размер буфера
+
+    it = packet_send_queue_.erase(it);
+  }
+}
+
 
 void TrunkLink::CloseConnect(ConnectID cnt) {
   SendDisconnectInformation(cnt);
@@ -385,7 +424,7 @@ void TrunkLink::ProcessDataToOutlink(
   pi.PacketID = kEmptyPacketID;
   pi.PacketData = buf;
   pi.PacketSize = sizeof(PacketAck);
-  SendPacket(pi);
+  SendPacket(pi);  // Ack пакет шлётся всегда, вне зависимости от загрузки
   if (cfg_settings_.LogTrunkPacket) {
     std::stringstream s;
     s << "Trunk Connect " << uuids::to_string(cnt) << ": ack packet packet "
@@ -532,7 +571,7 @@ void TrunkLink::OnCacheResend() {
       }
 
       it->NextSend = curt + std::chrono::milliseconds(kResendTimeout);
-      SendPacket(it->info);
+      SendPacket(it->info);  // Перепосылка из кэша шлётся всегда
 
       ++resending;
     }
@@ -572,6 +611,19 @@ TrunkClient::TrunkClient(boost::asio::io_context& ctx,
   std::seed_seq seq(std::begin(seed_data), std::end(seed_data));
   generator_ = std::mt19937(seq);
 
+  // Получим информацию о сокете
+  boost::asio::socket_base::receive_buffer_size option;
+  trunk_socket_.get_option(option);
+  int buf_size = option.value();
+  if (buf_size < kMinimalUdpBufferSize) {
+    buf_size = kMinimalUdpBufferSize;
+  }
+  trunk_socket_buffer_size_ = (int)(buf_size * kUdpBufferDataPart);
+  std::unique_lock lk(trunk_buffer_lock_);
+  trunk_buffer_last_size_ = trunk_socket_buffer_size_;
+  trunk_buffer_last_time_ = std::chrono::steady_clock::now();
+  lk.unlock();
+
   ReceiveTrunkData();
 }
 
@@ -601,7 +653,7 @@ void TrunkClient::SendConnectInformation(
   connect_cache_.push_back(pc);
   lk.unlock();
 
-  SendPacket(info);
+  SendPacket(info);  // Информация о соединении шлётся всегда
 
   // trlog("Send connect information. Id: %s, Point %u\n",
   //     uuids::to_string(cnt).c_str(), point);
@@ -628,7 +680,7 @@ void TrunkClient::OnCacheResend() {
       continue;
     }
     item.NextSend = curt + std::chrono::milliseconds(kResendConnectTimeout);
-    SendPacket(item.info);
+    SendPacket(item.info);  // Перепосылка из кэша шлётся всегда
 
     //    trlog("-- ReSend connect information for id %s\n",
     //        uuids::to_string(item.info.CtxID).c_str());
@@ -672,6 +724,24 @@ void TrunkClient::ReceiveTrunkData() {
       });
 }
 
+int TrunkClient::GetAvailableBuffer(ConnectID ctx) {
+  std::unique_lock lk(trunk_buffer_lock_);
+  auto curt = std::chrono::steady_clock::now();
+  auto intr = std::chrono::duration_cast<std::chrono::microseconds>(
+      curt - trunk_buffer_last_time_)
+                  .count();
+
+  trunk_buffer_last_size_ +=
+      intr * kDefaultUdpTrafficSpeed;  // Учитываем, что со временем буфер
+                                       // освобождается
+  if (trunk_buffer_last_size_ > trunk_socket_buffer_size_) {
+    trunk_buffer_last_size_ = trunk_socket_buffer_size_;
+  }
+  trunk_buffer_last_time_ = curt;
+
+  return trunk_buffer_last_size_;
+}
+
 void TrunkClient::SendPacket(PacketInfo pkt) {
   if (cfg_settings_.LogTrunkPacket) {
     std::stringstream s;
@@ -684,6 +754,14 @@ void TrunkClient::SendPacket(PacketInfo pkt) {
   trunk_socket_.async_send_to(boost::asio::buffer(pd.get(), pkt.PacketSize),
       points_.front(),
       [pd](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+
+  // Пересчитаем свободный буфер
+  std::unique_lock lk(trunk_buffer_lock_);
+  trunk_buffer_last_size_ -=
+      pkt.PacketSize +
+      kUdpPacketOverhead;  // Размер свободного места может стать отрицательным
+                           // - это нормально/допустимо
+  lk.unlock();
 }
 
 
@@ -710,7 +788,22 @@ TrunkServer::TrunkServer(boost::asio::io_context& ctx,
     : TrunkLink(ctx, true, cfg), asio_context_(ctx), link_fabric_(link_fabric) {
   for (size_t i = 0; i < trpoints.size(); ++i) {
     for (auto& p : trpoints[i]) {
-      trunk_sockets_.emplace_back(ServerSocket{i, {ctx, p}, GetBuffer()});
+      auto& item =
+          trunk_sockets_.emplace_back(ServerSocket{i, {ctx, p}, GetBuffer()});
+      // Получим информацию о сокете
+      boost::asio::socket_base::receive_buffer_size option;
+      item.socket.get_option(option);
+      int buf_size = option.value();
+      if (buf_size < kMinimalUdpBufferSize) {
+        buf_size = kMinimalUdpBufferSize;
+      }
+
+      // Все вычисления делаются в конструкторе, до старта всех операций.
+      // Поэтому блокировка не требуется
+      // TODO Точно не требуется???
+      item.socket_buffer_size_ = (int)(buf_size * kUdpBufferDataPart);
+      item.buffer_last_size_ = item.socket_buffer_size_;
+      item.buffer_last_time_ = std::chrono::steady_clock::now();
     }
   }
 
@@ -792,6 +885,37 @@ void TrunkServer::ProcessConnectData(
 }
 
 
+int TrunkServer::GetAvailableBuffer(ConnectID ctx) {
+  ConnectInfo info;
+  info.connect = ctx;
+
+  if (!GetClientLink(info)) {
+    // Нет информации о коннекте
+    return kUdpBufferUnavailable;
+  }
+
+  auto& ts = trunk_sockets_[info.socket_index];
+
+  std::unique_lock lk(buffer_lock_);
+  auto curt = std::chrono::steady_clock::now();
+  auto intr = std::chrono::duration_cast<std::chrono::microseconds>(
+      curt - ts.buffer_last_time_)
+                  .count();
+
+  ts.buffer_last_size_ +=
+      intr * kDefaultUdpTrafficSpeed;  // Учитываем, что со временем буфер
+                                       // освобождается
+  if (ts.buffer_last_size_ > ts.socket_buffer_size_) {
+    ts.buffer_last_size_ = ts.socket_buffer_size_;
+  }
+  ts.buffer_last_time_ = curt;
+  int res = ts.buffer_last_size_;
+  lk.unlock();
+
+  return res;
+}
+
+
 void TrunkServer::SendPacket(PacketInfo pkt) {
   // Найдём, куда отправлять
   ConnectInfo info;
@@ -822,6 +946,14 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
   ts.socket.async_send_to(boost::asio::buffer(buf.get(), pkt.PacketSize),
       info.client,
       [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+
+  // Пересчитаем свободный буфер
+  std::unique_lock lk(buffer_lock_);
+  ts.buffer_last_size_ -=
+      pkt.PacketSize +
+      kUdpPacketOverhead;  // Размер свободного места может стать отрицательным
+                           // - это нормально/допустимо
+  lk.unlock();
 }
 
 bool TrunkServer::GetPacketConnectID(
