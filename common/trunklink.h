@@ -49,6 +49,10 @@ const size_t kMaxChunkSize = 800;
 реальный размер получить не удалось (или он совсем маленький) */
 const int kMinimalUdpBufferSize = 20000;
 
+const double kUdpBufferDataPart =
+    0.7;  //!< Часть буфера, отводимая под отправку данных. Остальная часть
+          //!< остаётся как резерв для live-пакетов и др. важной информации
+
 /*! TODO Хардкод. Убрать. Типовая скорость udp обмена байт в микросекунду (или:
  * мегабайт/сек) */
 const double kDefaultUdpTrafficSpeed = 4.0;
