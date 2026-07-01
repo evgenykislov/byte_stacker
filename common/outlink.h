@@ -1,8 +1,6 @@
 #ifndef OUTLINK_H
 #define OUTLINK_H
 
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <atomic>
 #include <cstdint>
 #include <fstream>
@@ -24,7 +22,7 @@ struct AddressPortPoint {
 
 
 class TrunkLink;
-class Settings;
+struct Settings;
 
 /*! \class IOutLink класс для управления внешними tcp-соединениями.
 Экземпляр создаётся либо на основе подключенного сокета, либо на основе точки

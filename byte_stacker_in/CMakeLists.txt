@@ -42,6 +42,12 @@ include_directories(${PROJECT_NAME} ${Boost_INCLUDE_DIRS})
 
 include_directories(${PROJECT_NAME} "../common")
 
+
+if(MSVC)
+  # Отключение предупреждений о небезопасных функциях. Microsoft-специфично
+  target_compile_definitions(${PROJECT_NAME} PRIVATE -D_CRT_SECURE_NO_WARNINGS)
+endif()
+
 if (CONNECT_LOG)
   target_compile_definitions(${PROJECT_NAME} PRIVATE -DCONNECT_LOG)
 endif()
