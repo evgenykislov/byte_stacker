@@ -210,7 +210,7 @@ void TrunkLink::SendPacketQueue() {
     auto info = *it;
 
     auto ava = GetAvailableBuffer(info.CtxID);
-    if (ava < info.PacketSize) {
+    if (ava < static_cast<int>(info.PacketSize)) {
       ++it;
       continue;
     }
@@ -732,7 +732,7 @@ int TrunkClient::GetAvailableBuffer(ConnectID ctx) {
                   .count();
 
   trunk_buffer_last_size_ +=
-      intr * kDefaultUdpTrafficSpeed;  // Учитываем, что со временем буфер
+      static_cast<int>(intr * kDefaultUdpTrafficSpeed);  // Учитываем, что со временем буфер
                                        // освобождается
   if (trunk_buffer_last_size_ > trunk_socket_buffer_size_) {
     trunk_buffer_last_size_ = trunk_socket_buffer_size_;
@@ -903,7 +903,7 @@ int TrunkServer::GetAvailableBuffer(ConnectID ctx) {
                   .count();
 
   ts.buffer_last_size_ +=
-      intr * kDefaultUdpTrafficSpeed;  // Учитываем, что со временем буфер
+      static_cast<int>(intr * kDefaultUdpTrafficSpeed);  // Учитываем, что со временем буфер
                                        // освобождается
   if (ts.buffer_last_size_ > ts.socket_buffer_size_) {
     ts.buffer_last_size_ = ts.socket_buffer_size_;
