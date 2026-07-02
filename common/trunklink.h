@@ -1,8 +1,6 @@
 #ifndef TRUNKLINK_H
 #define TRUNKLINK_H
 
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <deque>
 #include <mutex>
 #include <utility>
@@ -108,7 +106,7 @@ struct StatInfo {
 };
 
 class OutLink;
-class Settings;
+struct Settings;
 
 /*! \class TrunkLink Общая часть алгоритмов транковой связи. TrunkLink не
 предназначен для самостоятельного использвоания, только как базовый класс */
