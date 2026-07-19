@@ -9,21 +9,37 @@ import UIKit
 
 class ViewController: UIViewController {
 
-    @IBOutlet weak var run_btn_: UIButton!
-    @IBOutlet weak var stop_btn_: UIButton!
+  var run_state_: Bool
+
+  required init?(coder c: NSCoder) {
+    run_state_ = false
+    super.init(coder: c)
+  }
+  
+  @IBOutlet weak var run_btn_: UIButton!
+  @IBOutlet weak var stop_btn_: UIButton!
     
     
-    
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        // Do any additional setup after loading the view.
-    }
+  override func viewDidLoad() {
+    super.viewDidLoad()
+
+    Update()
+  }
 
 
-    @IBAction func OnRun(_ sender: UIButton) {
-    }
+  @IBAction func OnRun(_ sender: UIButton) {
+    run_state_ = true
+    Update()
+  }
     
-    @IBAction func OnStop(_ sender: UIButton) {
-    }
+  @IBAction func OnStop(_ sender: UIButton) {
+    run_state_ = false
+    Update()
+  }
+  
+  func Update() {
+    run_btn_.isEnabled = !run_state_
+    stop_btn_.isEnabled = run_state_
+  }
 }
 
