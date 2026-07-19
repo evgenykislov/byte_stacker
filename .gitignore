@@ -47,3 +47,4 @@
 *.dwo
 *.txt.user
 *.md.backup
+.DS_Store
