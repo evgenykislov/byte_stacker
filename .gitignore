@@ -48,3 +48,5 @@
 *.txt.user
 *.md.backup
 .DS_Store
+/clients/ios/stacker/stacker.xcodeproj/project.xcworkspace/xcuserdata/evgenij.xcuserdatad/UserInterfaceState.xcuserstate
+/clients/ios/stacker/stacker.xcodeproj/xcuserdata/evgenij.xcuserdatad/xcdebugger/Breakpoints_v2.xcbkptlist
