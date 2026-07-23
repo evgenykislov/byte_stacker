@@ -56,10 +56,10 @@ uint32_t TrunkLink::GetNextPacketIndex(ConnectID cnt) {
     if (item.connect_id == cnt) {
       auto res = item.next_index_to_trunk;
       ++item.next_index_to_trunk;
-      return res;
+      return res; // Если номер пакета приблизится к переполнению, то он однозначно напорется на kOverflowError
     }
   }
-  return kBadPacketIndex;
+  return kConnectionAbsentError;
 }
 
 
@@ -172,9 +172,12 @@ void TrunkLink::SendCmdData(
   }
 
   auto pkt_index = GetNextPacketIndex(cnt);
-  if (pkt_index == kBadPacketIndex) {
-    // TODO ERROR
-    std::printf("ERROR: bad packet\n");
+  if (pkt_index == kConnectionAbsentError) {
+    // Соединения уже нет (дубликаты подтверждений). Ничего не делаем
+    return;
+  } else if (pkt_index == kOverflowError) {
+    // По соединению переслали очень много данных. Закрыть бы его
+    // TODO Закрыть соедидение в таком немного экзотическом случае
     return;
   }
 

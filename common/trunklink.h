@@ -137,7 +137,9 @@ class TrunkLink {
 
  protected:
   static const uint32_t kEmptyPacketID = static_cast<uint32_t>(-1);
-  static const uint32_t kBadPacketIndex = static_cast<uint32_t>(-2);
+  static const uint32_t kConnectionAbsentError = static_cast<uint32_t>(-2);
+  static const uint32_t kOverflowError = static_cast<uint32_t>(-3);
+  static_assert(kOverflowError < kConnectionAbsentError);
 
   static const size_t kPacketBufferSize = 1000;
   using PacketBuffer = uint8_t[kPacketBufferSize];
@@ -301,7 +303,12 @@ class TrunkLink {
   std::ofstream error_log_;
   std::mutex error_log_lock_;
 
-  // TODO Descr + kBadPacketIndex
+  /*! Выдаёт последовательные номера пакетов для задаваемого соединения
+  \param cnt идентификатор соединения, для которого выдать номер пакета
+  \return номер пакета в случае успеха. Может вернуться ошибка:
+    kOverflowError если счётчик переполнился (нужно выкачать более 3 ТБайт
+    одним соединением. TODO оценить ограничение)
+    kConnectionAbsentError соединение не найдено */
   uint32_t GetNextPacketIndex(ConnectID cnt);
 
 
