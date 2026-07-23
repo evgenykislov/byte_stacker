@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
           }
           return nullptr;
         },
-        cfg);
+        cfg, nullptr);
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {

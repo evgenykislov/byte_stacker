@@ -107,13 +107,14 @@ struct StatInfo {
 
 class OutLink;
 struct Settings;
+struct Tracer;
 
 /*! \class TrunkLink Общая часть алгоритмов транковой связи. TrunkLink не
 предназначен для самостоятельного использвоания, только как базовый класс */
 class TrunkLink {
  public:
-  TrunkLink(
-      boost::asio::io_context& ctx, bool server_side, const Settings& cfg);
+  TrunkLink(boost::asio::io_context& ctx, bool server_side, const Settings& cfg,
+      Tracer* tracer);
 
   virtual ~TrunkLink() {}
 
@@ -336,7 +337,7 @@ class TrunkClient: public TrunkLink {
  public:
   TrunkClient(boost::asio::io_context& ctx,
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
-      const Settings& cfg);
+      const Settings& cfg, Tracer* tracer);
   virtual ~TrunkClient();
 
   /*! Добавить новое подключение.  Подключение будет добавлено, функция его\
@@ -418,7 +419,7 @@ class TrunkServer: public TrunkLink {
   TrunkServer(boost::asio::io_context& ctx,
       const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
       std::function<std::shared_ptr<OutLink>(PointID)> link_fabric,
-      const Settings& cfg);
+      const Settings& cfg, Tracer* tracer);
   virtual ~TrunkServer();
 
   /*! Получить статистику по работе приложения */

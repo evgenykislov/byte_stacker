@@ -6,6 +6,7 @@
 
 #include "settings.h"
 #include "trace.h"
+#include "tracer.h"
 
 namespace bai = boost::asio::ip;
 
@@ -23,8 +24,8 @@ void CopyConnectID(uint8_t dest[16], const uuids::uuid& src) {
 }
 
 
-TrunkLink::TrunkLink(
-    boost::asio::io_context& ctx, bool server_side, const Settings& cfg)
+TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side,
+    const Settings& cfg, Tracer* tracer)
     : cfg_settings_(cfg),
       server_side_(server_side),
       update_timer_(ctx),
@@ -56,7 +57,8 @@ uint32_t TrunkLink::GetNextPacketIndex(ConnectID cnt) {
     if (item.connect_id == cnt) {
       auto res = item.next_index_to_trunk;
       ++item.next_index_to_trunk;
-      return res; // Если номер пакета приблизится к переполнению, то он однозначно напорется на kOverflowError
+      return res;  // Если номер пакета приблизится к переполнению, то он
+                   // однозначно напорется на kOverflowError
     }
   }
   return kConnectionAbsentError;
@@ -603,8 +605,8 @@ void TrunkLink::RemoveOutLink(uuids::uuid cnt) {
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
-    const Settings& cfg)
-    : TrunkLink(ctx, false, cfg),
+    const Settings& cfg, Tracer* tracer)
+    : TrunkLink(ctx, false, cfg, tracer),
       points_(trpoints),
       trunk_socket_(ctx, boost::asio::ip::udp::v4()) {
   // Инициализация генератора uuid
@@ -787,8 +789,10 @@ void TrunkClient::ProcessAckConnectData(
 TrunkServer::TrunkServer(boost::asio::io_context& ctx,
     const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
     std::function<std::shared_ptr<OutLink>(PointID)> link_fabric,
-    const Settings& cfg)
-    : TrunkLink(ctx, true, cfg), asio_context_(ctx), link_fabric_(link_fabric) {
+    const Settings& cfg, Tracer* tracer)
+    : TrunkLink(ctx, true, cfg, tracer),
+      asio_context_(ctx),
+      link_fabric_(link_fabric) {
   for (size_t i = 0; i < trpoints.size(); ++i) {
     for (auto& p : trpoints[i]) {
       auto& item =
