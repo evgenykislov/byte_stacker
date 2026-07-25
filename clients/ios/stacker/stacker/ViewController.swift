@@ -28,6 +28,7 @@ class ViewController: UIViewController {
 
 
   @IBAction func OnRun(_ sender: UIButton) {
+    stop_btn_.setTitle("hz", for: .normal)
     run_state_ = true
     Update()
   }
