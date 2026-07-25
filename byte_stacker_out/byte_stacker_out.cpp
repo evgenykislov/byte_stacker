@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
       trp;  //!< Транковые точки для обмена данными
   Settings cfg;
   DefaultSettings(cfg);
+  Tracer* tracer = nullptr;
 
   for (int i = 1; i < argc; ++i) {
     std::string a(argv[i]);
@@ -93,7 +94,7 @@ int main(int argc, char** argv) {
 
     TrunkServer trs(
         ctx, trp,
-        [&eps, &ctx, &cfg](PointID point) -> std::shared_ptr<OutLink> {
+        [&eps, &ctx, &cfg, tracer](PointID point) -> std::shared_ptr<OutLink> {
           auto it = eps.find(point);
           if (it == eps.end()) {
             return nullptr;
@@ -101,7 +102,7 @@ int main(int argc, char** argv) {
 
           try {
             return OutLink::CreateOutLink(
-                ctx, it->second.Address, it->second.Port, cfg);
+                ctx, it->second.Address, it->second.Port, cfg, tracer);
           } catch (...) {
           }
           return nullptr;

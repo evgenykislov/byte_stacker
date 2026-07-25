@@ -27,6 +27,7 @@ void CopyConnectID(uint8_t dest[16], const uuids::uuid& src) {
 TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side,
     const Settings& cfg, Tracer* tracer)
     : cfg_settings_(cfg),
+      tracer_(tracer),
       server_side_(server_side),
       update_timer_(ctx),
       send_queue_timer_(ctx),

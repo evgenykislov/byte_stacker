@@ -107,7 +107,7 @@ struct StatInfo {
 
 class OutLink;
 struct Settings;
-struct Tracer;
+class Tracer;
 
 /*! \class TrunkLink Общая часть алгоритмов транковой связи. TrunkLink не
 предназначен для самостоятельного использвоания, только как базовый класс */
@@ -168,6 +168,9 @@ class TrunkLink {
   std::mutex out_links_lock_;
 
   const Settings& cfg_settings_;
+
+  // TODO Descr
+  Tracer* tracer_;
 
   // TODO parameter client - remove ???
   void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,

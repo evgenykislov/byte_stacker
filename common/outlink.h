@@ -21,8 +21,10 @@ struct AddressPortPoint {
 };
 
 
-class TrunkLink;
 struct Settings;
+class TrunkLink;
+class Tracer;
+
 
 /*! \class IOutLink класс для управления внешними tcp-соединениями.
 Экземпляр создаётся либо на основе подключенного сокета, либо на основе точки
@@ -38,9 +40,10 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   // Функции конструирования экземпляров. Описание см. для соответствующих
   // приватных конструкторов
   static std::shared_ptr<OutLink> CreateOutLink(
-      boost::asio::ip::tcp::socket&& socket, const Settings& cfg);
+      boost::asio::ip::tcp::socket&& socket, const Settings& cfg,
+      Tracer* tracer);
   static std::shared_ptr<OutLink> CreateOutLink(boost::asio::io_context& ctx,
-      std::string address, uint16_t port, const Settings& cfg);
+      std::string address, uint16_t port, const Settings& cfg, Tracer* tracer);
 
 
   virtual ~OutLink();
@@ -80,6 +83,9 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   записанных данных на другой стороне, байт */
   void SetOtherSideWrittenVolume(uint64_t volume);
 
+ protected:
+  Tracer* tracer_;
+
  private:
   OutLink() = delete;
   OutLink(const OutLink&) = delete;
@@ -92,7 +98,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
 
   /*! Конструктор экземпляра на основе сокета с установленным соединением
   \param socket сокет с соединением */
-  OutLink(boost::asio::ip::tcp::socket&& socket, const Settings& cfg);
+  OutLink(boost::asio::ip::tcp::socket&& socket, const Settings& cfg,
+      Tracer* tracer);
 
   /*! Конструктор экземпляра на основе адреса и порта (например mysite.com:80).
   Подключение выполняется автоматически (и асинхронно) при вызове функции Run.
@@ -103,7 +110,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   сайта
   \param port порт для подключения */
   OutLink(boost::asio::io_context& ctx, std::string address, uint16_t port,
-      const Settings& cfg);
+      const Settings& cfg, Tracer* tracer);
 
 
   static const size_t kChunkSize = 800;

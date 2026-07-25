@@ -14,19 +14,22 @@ const char kLogPrefix[] = "/var/log/stacker/cnt_";
 #endif
 
 std::shared_ptr<OutLink> OutLink::CreateOutLink(
-    boost::asio::ip::tcp::socket&& socket, const Settings& cfg) {
-  return std::shared_ptr<OutLink>(new OutLink(std::move(socket), cfg));
+    boost::asio::ip::tcp::socket&& socket, const Settings& cfg,
+    Tracer* tracer) {
+  return std::shared_ptr<OutLink>(new OutLink(std::move(socket), cfg, tracer));
 }
 
 
 std::shared_ptr<OutLink> OutLink::CreateOutLink(boost::asio::io_context& ctx,
-    std::string address, uint16_t port, const Settings& cfg) {
-  return std::shared_ptr<OutLink>(new OutLink(ctx, address, port, cfg));
+    std::string address, uint16_t port, const Settings& cfg, Tracer* tracer) {
+  return std::shared_ptr<OutLink>(new OutLink(ctx, address, port, cfg, tracer));
 }
 
 
-OutLink::OutLink(boost::asio::ip::tcp::socket&& socket, const Settings& cfg)
-    : socket_(std::move(socket)),
+OutLink::OutLink(
+    boost::asio::ip::tcp::socket&& socket, const Settings& cfg, Tracer* tracer)
+    : tracer_(tracer),
+      socket_(std::move(socket)),
       resolver_(socket_.get_executor()),
       hoster_(nullptr),
       cfg_settings_(cfg),
@@ -97,8 +100,9 @@ void OutLink::CancelReadWrite() {
 
 
 OutLink::OutLink(boost::asio::io_context& ctx, std::string address,
-    uint16_t port, const Settings& cfg)
-    : socket_(ctx),
+    uint16_t port, const Settings& cfg, Tracer* tracer)
+    : tracer_(tracer),
+      socket_(ctx),
       resolver_(ctx),
       host_(address),
       service_(std::to_string(port)),

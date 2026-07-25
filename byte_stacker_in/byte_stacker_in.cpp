@@ -45,12 +45,12 @@ Options:\n\
 одной и той-же точки)
 \param socket подключенный tcp сокет новоко соединения */
 void RegisterNewConnection(TrunkClient& trc, PointID id,
-    bai::tcp::socket&& socket, const Settings& cfg) {
+    bai::tcp::socket&& socket, const Settings& cfg, Tracer* tracer) {
   ConnectID cnt;
   assert(cnt.is_nil());
 
   try {
-    auto ol = OutLink::CreateOutLink(std::move(socket), cfg);
+    auto ol = OutLink::CreateOutLink(std::move(socket), cfg, tracer);
     trc.AddConnect(id, ol);
   } catch (std::exception&) {
     // Незарегистрировали. Просто выходим
@@ -66,13 +66,13 @@ void RegisterNewConnection(TrunkClient& trc, PointID id,
 \param id идентификатор точки, задаётся в командной строке */
 void RequestAccept(boost::asio::io_context& ctx,
     std::shared_ptr<bai::tcp::acceptor> acp, TrunkClient& trc, PointID id,
-    const Settings& cfg) {
+    const Settings& cfg, Tracer* tracer) {
   auto socket = std::make_shared<bai::tcp::socket>(ctx);
-  acp->async_accept(*socket, [&ctx, &trc, socket, acp, id, &cfg](
+  acp->async_accept(*socket, [&ctx, &trc, socket, acp, id, &cfg, tracer](
                                  const boost::system::error_code& error) {
     if (!error) {
       // Получили новое соединение. Регистрируем, работаем
-      RegisterNewConnection(trc, id, std::move(*socket.get()), cfg);
+      RegisterNewConnection(trc, id, std::move(*socket.get()), cfg, tracer);
     } else if (error == boost::asio::error::connection_aborted) {
       // Соединение пришло и сразу разорвалось. Это некритично. Продолжаем
       // работу
@@ -87,7 +87,7 @@ void RequestAccept(boost::asio::io_context& ctx,
     }
 
     // Продолжаем принимать новые подключения
-    RequestAccept(ctx, acp, trc, id, cfg);
+    RequestAccept(ctx, acp, trc, id, cfg, tracer);
   });
 }
 
@@ -101,9 +101,9 @@ void RequestAccept(boost::asio::io_context& ctx,
 \return акцептор, на котором уже ожидаютсмя подключения */
 std::shared_ptr<bai::tcp::acceptor> ListenLocalPoint(
     boost::asio::io_context& ctx, TrunkClient& trc, PointID id,
-    boost::asio::ip::tcp::endpoint point, const Settings& cfg) {
+    boost::asio::ip::tcp::endpoint point, const Settings& cfg, Tracer* tracer) {
   auto acceptor = std::make_shared<bai::tcp::acceptor>(ctx, point);
-  RequestAccept(ctx, acceptor, trc, id, cfg);
+  RequestAccept(ctx, acceptor, trc, id, cfg, tracer);
   return acceptor;
 }
 
@@ -119,6 +119,8 @@ int main(int argc, char** argv) {
   std::vector<bai::udp::endpoint> trp;  //!< Транковые точки для запроса данных
   Settings cfg;  //!< Настройки программы из конфигурационного файла
   DefaultSettings(cfg);
+
+  Tracer* tracer = nullptr;
 
   // Разбор аргументов командной строки
   for (int i = 1; i < argc; ++i) {
@@ -181,7 +183,7 @@ int main(int argc, char** argv) {
     // Подготовка акцепторов
     std::vector<std::shared_ptr<bai::tcp::acceptor>> acceptors;
     for (auto& p : lps) {
-      auto acp = ListenLocalPoint(ctx, trc, p.first, p.second, cfg);
+      auto acp = ListenLocalPoint(ctx, trc, p.first, p.second, cfg, tracer);
       acceptors.push_back(acp);
     }
 
