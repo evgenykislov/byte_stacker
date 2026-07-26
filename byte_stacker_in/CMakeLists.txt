@@ -17,6 +17,7 @@ option(CONNECT_LOG "Writing log for connect operations" OFF)
 
 set(SOURCE_FILES
   "byte_stacker_in.cpp"
+  "main.cpp"
   "../common/outlink.cpp"
   "../common/parser.cpp"
   "../common/settings.cpp"
