@@ -421,7 +421,7 @@ class TrunkServer: public TrunkLink {
  public:
   TrunkServer(boost::asio::io_context& ctx,
       const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
-      std::function<std::shared_ptr<OutLink>(PointID)> link_fabric,
+      std::function<std::shared_ptr<OutLink>(PointID, ConnectID)> link_fabric,
       const Settings& cfg, Tracer* tracer);
   virtual ~TrunkServer();
 
@@ -472,7 +472,7 @@ class TrunkServer: public TrunkLink {
   std::vector<ConnectInfo> clients_link_;
   std::mutex clients_link_lock_;
 
-  std::function<std::shared_ptr<OutLink>(PointID)> link_fabric_;
+  std::function<std::shared_ptr<OutLink>(PointID, ConnectID)> link_fabric_;
 
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();

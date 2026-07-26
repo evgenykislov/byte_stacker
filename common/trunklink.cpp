@@ -525,6 +525,9 @@ void TrunkLink::IntAddOutLinkWOLock(
   info.deadlink_timeout_ = std::chrono::steady_clock::now() +
                            std::chrono::milliseconds(kDeadOutLinkTimeout);
   out_links_.push_back(info);
+  if (tracer_) {
+    tracer_->CreateTrace(cnt);
+  }
   //  trlog("-- Add outlink %s\n", uuids::to_string(cnt).c_str());
   link->Run(this, cnt);
 }
@@ -706,6 +709,8 @@ void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
     // Такая внешняя связь уже существует
     // Странно, но теоретически возможно
     // Ничего не делаем, выходим, забываем про эту связь
+    std::cerr << "??: uuid generator creates double: " << uuids::to_string(cnt)
+              << std::endl;
     return;
   }
   IntAddOutLinkWOLock(cnt, link);
@@ -789,7 +794,7 @@ void TrunkClient::ProcessAckConnectData(
 
 TrunkServer::TrunkServer(boost::asio::io_context& ctx,
     const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
-    std::function<std::shared_ptr<OutLink>(PointID)> link_fabric,
+    std::function<std::shared_ptr<OutLink>(PointID, ConnectID)> link_fabric,
     const Settings& cfg, Tracer* tracer)
     : TrunkLink(ctx, true, cfg, tracer),
       asio_context_(ctx),
@@ -883,7 +888,7 @@ void TrunkServer::ProcessConnectData(
     return;
   }
   // Создадим внешний коннект
-  auto ol = link_fabric_(info->PointID);
+  auto ol = link_fabric_(info->PointID, cnt);
   if (!ol) {
     // TODO ERROR Can't create link
     return;

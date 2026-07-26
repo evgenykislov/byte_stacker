@@ -10,6 +10,7 @@
 #include "parser.h"
 #include "settings.h"
 #include "trace.h"
+#include "tracer.h"
 #include "trunklink.h"
 
 namespace bai = boost::asio::ip;
@@ -94,7 +95,8 @@ int main(int argc, char** argv) {
 
     TrunkServer trs(
         ctx, trp,
-        [&eps, &ctx, &cfg, tracer](PointID point) -> std::shared_ptr<OutLink> {
+        [&eps, &ctx, &cfg, tracer](
+            PointID point, ConnectID cnt) -> std::shared_ptr<OutLink> {
           auto it = eps.find(point);
           if (it == eps.end()) {
             return nullptr;
