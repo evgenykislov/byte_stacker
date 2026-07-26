@@ -6,7 +6,28 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3E55ED7F30167683007072ED /* byte_stacker_in.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3E55ED7E30167683007072ED /* byte_stacker_in.cpp */; };
+		3E55ED8B3016769F007072ED /* settings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3E55ED863016769F007072ED /* settings.cpp */; };
+		3E55ED8C3016769F007072ED /* parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3E55ED843016769F007072ED /* parser.cpp */; };
+		3E55ED8D3016769F007072ED /* outlink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3E55ED823016769F007072ED /* outlink.cpp */; };
+		3E55ED8E3016769F007072ED /* trunklink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3E55ED893016769F007072ED /* trunklink.cpp */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		3E55ED7D30167683007072ED /* byte_stacker_in.h */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; name = byte_stacker_in.h; path = /Users/evgenij/programm/byte_stacker/byte_stacker_in/byte_stacker_in.h; sourceTree = "<absolute>"; };
+		3E55ED7E30167683007072ED /* byte_stacker_in.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = byte_stacker_in.cpp; path = /Users/evgenij/programm/byte_stacker/byte_stacker_in/byte_stacker_in.cpp; sourceTree = "<absolute>"; };
+		3E55ED803016769F007072ED /* data.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = data.h; path = /Users/evgenij/programm/byte_stacker/common/data.h; sourceTree = "<absolute>"; };
+		3E55ED813016769F007072ED /* outlink.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = outlink.h; path = /Users/evgenij/programm/byte_stacker/common/outlink.h; sourceTree = "<absolute>"; };
+		3E55ED823016769F007072ED /* outlink.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = outlink.cpp; path = /Users/evgenij/programm/byte_stacker/common/outlink.cpp; sourceTree = "<absolute>"; };
+		3E55ED833016769F007072ED /* parser.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = parser.h; path = /Users/evgenij/programm/byte_stacker/common/parser.h; sourceTree = "<absolute>"; };
+		3E55ED843016769F007072ED /* parser.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = parser.cpp; path = /Users/evgenij/programm/byte_stacker/common/parser.cpp; sourceTree = "<absolute>"; };
+		3E55ED853016769F007072ED /* settings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = settings.h; path = /Users/evgenij/programm/byte_stacker/common/settings.h; sourceTree = "<absolute>"; };
+		3E55ED863016769F007072ED /* settings.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = settings.cpp; path = /Users/evgenij/programm/byte_stacker/common/settings.cpp; sourceTree = "<absolute>"; };
+		3E55ED873016769F007072ED /* trace.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = trace.h; path = /Users/evgenij/programm/byte_stacker/common/trace.h; sourceTree = "<absolute>"; };
+		3E55ED883016769F007072ED /* trunklink.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = trunklink.h; path = /Users/evgenij/programm/byte_stacker/common/trunklink.h; sourceTree = "<absolute>"; };
+		3E55ED893016769F007072ED /* trunklink.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = trunklink.cpp; path = /Users/evgenij/programm/byte_stacker/common/trunklink.cpp; sourceTree = "<absolute>"; };
+		3E55ED8A3016769F007072ED /* uuid.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = uuid.h; path = /Users/evgenij/programm/byte_stacker/common/uuid.h; sourceTree = "<absolute>"; };
 		3EDC9033300CD8D5002A70E3 /* stacker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = stacker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -26,6 +47,9 @@
 			exceptions = (
 				3EDC9045300CD8D6002A70E3 /* Exceptions for "stacker" folder in "stacker" target */,
 			);
+			explicitFileTypes = {
+				bridge.c = sourcecode.cpp.cpp;
+			};
 			path = stacker;
 			sourceTree = "<group>";
 		};
@@ -45,6 +69,19 @@
 		3EDC902A300CD8D5002A70E3 = {
 			isa = PBXGroup;
 			children = (
+				3E55ED803016769F007072ED /* data.h */,
+				3E55ED813016769F007072ED /* outlink.h */,
+				3E55ED823016769F007072ED /* outlink.cpp */,
+				3E55ED833016769F007072ED /* parser.h */,
+				3E55ED843016769F007072ED /* parser.cpp */,
+				3E55ED853016769F007072ED /* settings.h */,
+				3E55ED863016769F007072ED /* settings.cpp */,
+				3E55ED873016769F007072ED /* trace.h */,
+				3E55ED883016769F007072ED /* trunklink.h */,
+				3E55ED893016769F007072ED /* trunklink.cpp */,
+				3E55ED8A3016769F007072ED /* uuid.h */,
+				3E55ED7D30167683007072ED /* byte_stacker_in.h */,
+				3E55ED7E30167683007072ED /* byte_stacker_in.cpp */,
 				3EDC9035300CD8D5002A70E3 /* stacker */,
 				3EDC9034300CD8D5002A70E3 /* Products */,
 			);
@@ -133,6 +170,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3E55ED7F30167683007072ED /* byte_stacker_in.cpp in Sources */,
+				3E55ED8B3016769F007072ED /* settings.cpp in Sources */,
+				3E55ED8C3016769F007072ED /* parser.cpp in Sources */,
+				3E55ED8D3016769F007072ED /* outlink.cpp in Sources */,
+				3E55ED8E3016769F007072ED /* trunklink.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
