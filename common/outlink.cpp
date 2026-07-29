@@ -6,6 +6,7 @@
 
 #include "settings.h"
 #include "trace.h"
+#include "tracer.h"
 #include "trunklink.h"
 
 
@@ -13,22 +14,23 @@
 const char kLogPrefix[] = "/var/log/stacker/cnt_";
 #endif
 
-std::shared_ptr<OutLink> OutLink::CreateOutLink(
+std::shared_ptr<OutLink> OutLink::CreateOutLink(ConnectID cnt,
     boost::asio::ip::tcp::socket&& socket, const Settings& cfg,
     Tracer* tracer) {
-  return std::shared_ptr<OutLink>(new OutLink(std::move(socket), cfg, tracer));
+  return std::shared_ptr<OutLink>(new OutLink(cnt, std::move(socket), cfg, tracer));
 }
 
 
-std::shared_ptr<OutLink> OutLink::CreateOutLink(boost::asio::io_context& ctx,
+std::shared_ptr<OutLink> OutLink::CreateOutLink(ConnectID cnt,
+    boost::asio::io_context& ctx,
     std::string address, uint16_t port, const Settings& cfg, Tracer* tracer) {
-  return std::shared_ptr<OutLink>(new OutLink(ctx, address, port, cfg, tracer));
+  return std::shared_ptr<OutLink>(new OutLink(cnt, ctx, address, port, cfg, tracer));
 }
 
 
-OutLink::OutLink(
+OutLink::OutLink(ConnectID cnt,
     boost::asio::ip::tcp::socket&& socket, const Settings& cfg, Tracer* tracer)
-    : tracer_(tracer),
+    : connect_id_(cnt), tracer_(tracer),
       socket_(std::move(socket)),
       resolver_(socket_.get_executor()),
       hoster_(nullptr),
@@ -79,6 +81,9 @@ void OutLink::FillNetworkBuffer() {
         stop_write_chunk_id_ <= next_write_chunk_id_) {
       stop_after_all_write_ = true;
       write_chunks_.clear();
+      if (tracer_) {
+        tracer_->Message(connect_id_, "Got stop chunk");
+      }
       break;
     }
   }
@@ -96,12 +101,18 @@ void OutLink::CancelReadWrite() {
   stop_write_immediate_ = true;
   write_idle_timer_.cancel();
   read_idle_timer_.cancel();
+
+  if (tracer_) {
+    tracer_->Message(connect_id_, "Cancelled all read-write operations");
+  }
 }
 
 
-OutLink::OutLink(boost::asio::io_context& ctx, std::string address,
+OutLink::OutLink(ConnectID cnt, boost::asio::io_context& ctx,
+    std::string address,
     uint16_t port, const Settings& cfg, Tracer* tracer)
-    : tracer_(tracer),
+    : connect_id_(cnt),
+      tracer_(tracer),
       socket_(ctx),
       resolver_(ctx),
       host_(address),
@@ -143,18 +154,16 @@ void OutLink::RequestRead() {
   uint64_t dw = rv - w2;  // Данных в доставке
   if (dw > kMaxProcessingDataSize) {
     // Пока подождём
-    if (cfg_settings_.LogOutlinkPacket) {
-      std::stringstream s;
-      s << "Connect " << selfid_str_ << ": read suspened(idling)";
-      cfg_settings_.OutputLog(s.str());
+    if (tracer_) {
+      tracer_->Message(connect_id_, "-------- Idle now");
     }
+
     RequestReadIdle();
     return;
   }
 
 
   auto selfptr = shared_from_this();
-  //  trlog("-- Request read for outlink socket\n");
   socket_.async_read_some(boost::asio::buffer(read_buffer_),
       [selfptr](
           const boost::system::error_code& err, std::size_t bytes_transferred) {
@@ -170,15 +179,15 @@ void OutLink::RequestReadProcessing(
     // Пришли данные
     if (bytes_transferred > 0) {
       read_volume_ += bytes_transferred;
-      LogWrite("Read %" PRIu64 " bytes", read_volume_.load());
-      assert(hoster_);
-      if (cfg_settings_.LogOutlinkPacket) {
-        std::stringstream s;
-        s << "Connect " << selfid_str_ << ": read " << bytes_transferred
-          << " bytes";
-        cfg_settings_.OutputLog(s.str());
+
+      if (tracer_) {
+        std::stringstream ss;
+        ss << "Read " << bytes_transferred << " bytes (summ: " << read_volume_
+           << ")";
+        tracer_->Message(connect_id_, ss.str());
       }
 
+      assert(hoster_);
       hoster_->SendData(selfid_, read_buffer_, bytes_transferred);
     }
   } else {

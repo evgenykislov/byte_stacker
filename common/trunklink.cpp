@@ -525,9 +525,6 @@ void TrunkLink::IntAddOutLinkWOLock(
   info.deadlink_timeout_ = std::chrono::steady_clock::now() +
                            std::chrono::milliseconds(kDeadOutLinkTimeout);
   out_links_.push_back(info);
-  if (tracer_) {
-    tracer_->CreateTrace(cnt);
-  }
   //  trlog("-- Add outlink %s\n", uuids::to_string(cnt).c_str());
   link->Run(this, cnt);
 }
@@ -613,12 +610,6 @@ TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     : TrunkLink(ctx, false, cfg, tracer),
       points_(trpoints),
       trunk_socket_(ctx, boost::asio::ip::udp::v4()) {
-  // Инициализация генератора uuid
-  std::random_device rd;
-  auto seed_data = std::array<int, std::mt19937::state_size>{};
-  std::generate(std::begin(seed_data), std::end(seed_data), std::ref(rd));
-  std::seed_seq seq(std::begin(seed_data), std::end(seed_data));
-  generator_ = std::mt19937(seq);
 
   // Получим информацию о сокете
   boost::asio::socket_base::receive_buffer_size option;
@@ -700,8 +691,8 @@ TrunkClient::~TrunkClient() {}
 
 void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
   assert(link);
-  uuids::uuid_random_generator gen{generator_};
-  uuids::uuid cnt = gen();
+
+  auto cnt = link->GetConnectID();
 
   std::unique_lock lk(out_links_lock_);
   auto exist_link = GetOutLinkWOLock(cnt);

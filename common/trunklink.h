@@ -390,8 +390,6 @@ class TrunkClient: public TrunkLink {
   PacketBuffer trunk_read_buffer_;
   boost::asio::ip::udp::endpoint trunk_read_point_;
 
-  std::mt19937 generator_;
-
   /*! Отправить оповещение о новом коннекте на сторону сервера
   \param cnt идентификатор коннекта
   \param point идентификатор внешней точки кодключения

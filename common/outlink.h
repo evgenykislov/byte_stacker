@@ -39,10 +39,11 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
  public:
   // Функции конструирования экземпляров. Описание см. для соответствующих
   // приватных конструкторов
-  static std::shared_ptr<OutLink> CreateOutLink(
+  static std::shared_ptr<OutLink> CreateOutLink(ConnectID cnt,
       boost::asio::ip::tcp::socket&& socket, const Settings& cfg,
       Tracer* tracer);
-  static std::shared_ptr<OutLink> CreateOutLink(boost::asio::io_context& ctx,
+  static std::shared_ptr<OutLink> CreateOutLink(ConnectID cnt,
+      boost::asio::io_context& ctx,
       std::string address, uint16_t port, const Settings& cfg, Tracer* tracer);
 
 
@@ -55,6 +56,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
     kStopChunkAbsent  // Нет чанка с данными
   };
 
+  // TODO descr
+  ConnectID GetConnectID() { return connect_id_; }
 
   // TODO Сделать потокобезопасной
   /*! Запуск подключения в работу. Функция неблокирующая
@@ -98,7 +101,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
 
   /*! Конструктор экземпляра на основе сокета с установленным соединением
   \param socket сокет с соединением */
-  OutLink(boost::asio::ip::tcp::socket&& socket, const Settings& cfg,
+  OutLink(ConnectID cnt, boost::asio::ip::tcp::socket&& socket,
+      const Settings& cfg,
       Tracer* tracer);
 
   /*! Конструктор экземпляра на основе адреса и порта (например mysite.com:80).
@@ -109,7 +113,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   \param address адрес для подключения. Может быть как явный ip-адрес, так и имя
   сайта
   \param port порт для подключения */
-  OutLink(boost::asio::io_context& ctx, std::string address, uint16_t port,
+  OutLink(ConnectID cnt, boost::asio::io_context& ctx, std::string address,
+      uint16_t port,
       const Settings& cfg, Tracer* tracer);
 
 
@@ -126,6 +131,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   static const uint64_t kMaxProcessingDataSize = 2000000;
 
   static const uint32_t kUndefinedChunkID = static_cast<uint32_t>(-1);
+
+  ConnectID connect_id_;
 
   boost::asio::ip::tcp::socket socket_;  //! Сокет подключения
   boost::asio::ip::tcp::resolver resolver_;

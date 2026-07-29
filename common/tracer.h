@@ -18,6 +18,8 @@ class Tracer {
   void CreateTrace(uuids::uuid id);
   void FinishTrace(uuids::uuid id);
 
+  void Message(uuids::uuid id, const std::string& msg);
+
  private:
   Tracer(const Tracer&) = delete;
   Tracer& operator=(const Tracer&) = delete;

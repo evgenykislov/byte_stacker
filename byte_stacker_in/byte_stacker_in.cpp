@@ -14,6 +14,7 @@
 #include "parser.h"
 #include "settings.h"
 #include "trace.h"
+#include "tracer.h"
 #include "trunklink.h"
 
 namespace bai = boost::asio::ip;
@@ -24,6 +25,8 @@ const std::string kTrunkPrefix = "--trunk=";
 const std::string kSettingsPrefix = "--settings=";
 const size_t kPoolSize = 4;
 const int kInformationInterval = 1000;
+
+std::mt19937 generator_;
 
 
 void PrintHelp() {
@@ -46,11 +49,16 @@ Options:\n\
 \param socket подключенный tcp сокет новоко соединения */
 void RegisterNewConnection(TrunkClient& trc, PointID id,
     bai::tcp::socket&& socket, const Settings& cfg, Tracer* tracer) {
-  ConnectID cnt;
-  assert(cnt.is_nil());
+  // Сгенерируем идентификатор
+  uuids::uuid_random_generator gen{generator_};
+  uuids::uuid cnt = gen();
+
+  if (tracer) {
+    tracer->CreateTrace(cnt);
+  }
 
   try {
-    auto ol = OutLink::CreateOutLink(std::move(socket), cfg, tracer);
+    auto ol = OutLink::CreateOutLink(cnt, std::move(socket), cfg, tracer);
     trc.AddConnect(id, ol);
   } catch (std::exception&) {
     // Незарегистрировали. Просто выходим
@@ -114,13 +122,22 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  // Инициализация генератора uuid
+  std::random_device rd;
+  auto seed_data = std::array<int, std::mt19937::state_size>{};
+  std::generate(std::begin(seed_data), std::end(seed_data), std::ref(rd));
+  std::seed_seq seq(std::begin(seed_data), std::end(seed_data));
+  generator_ = std::mt19937(seq);
+
+
   std::map<PointID, bai::tcp::endpoint>
       lps;  //!< Локальные точки для приёма подключений
   std::vector<bai::udp::endpoint> trp;  //!< Транковые точки для запроса данных
   Settings cfg;  //!< Настройки программы из конфигурационного файла
   DefaultSettings(cfg);
 
-  Tracer* tracer = nullptr;
+  Tracer tracer_obj;
+  Tracer* tracer = &tracer_obj;
 
   // Разбор аргументов командной строки
   for (int i = 1; i < argc; ++i) {
