@@ -30,13 +30,13 @@ static std::string timemark() {
   std::ostringstream oss;
   oss << std::put_time(&bt, "%H:%M:%S");  // Format: HH:MM:SS
   oss << '.' << std::setfill('0') << std::setw(3)
-        << ms.count();  // Append milliseconds with leading zeros
+      << ms.count();  // Append milliseconds with leading zeros
 
   return oss.str();
 }
 
 
-Tracer::Tracer(): base_("./") {}
+Tracer::Tracer(): base_("/tmp/stacker/") {}
 
 void Tracer::CreateTrace(uuids::uuid id) {
   std::lock_guard lk(trace_lock_);
@@ -52,6 +52,7 @@ void Tracer::CreateTrace(uuids::uuid id) {
   storage_[id].creation = std::chrono::steady_clock::now();
   auto it = storage_.find(id);
   assert(it != storage_.end());
+  it->second.write_path = p;
   it->second.file.open(p, std::ios_base::trunc);
   if (!it->second.file) {
     // Ошибка создания файла
@@ -64,6 +65,23 @@ void Tracer::CreateTrace(uuids::uuid id) {
 }
 
 void Tracer::FinishTrace(uuids::uuid id) {
+  std::lock_guard lk(trace_lock_);
+  auto it = storage_.find(id);
+  if (it == storage_.end()) {
+    // Ошибка логики. Уже всё отслеживается
+    std::cerr << "ERROR!: there isn't trace " << uuids::to_string(id)
+              << " for finish." << std::endl;
+    return;
+  }
+
+  it->second.file << "--------- Завершение соединения: " << timemark()
+                  << std::endl;
+
+  std::string name = uuids::to_string(id);
+  auto p = base_ / "completed" / name;
+  std::filesystem::rename(it->second.write_path, p);
+
+  storage_.erase(it);
 }
 
 
@@ -72,15 +90,18 @@ void Tracer::Message(uuids::uuid id, const std::string& msg) {
   auto it = storage_.find(id);
   if (it == storage_.end()) {
     // Ошибка логики. Уже всё отслеживается
-    std::cerr << "ERROR!: there isn't trace " << uuids::to_string(id) << ". Message: " << msg << std::endl;
+    std::cerr << "ERROR!: there isn't trace " << uuids::to_string(id)
+              << ". Message: " << msg << std::endl;
     return;
   }
 
   auto curt = std::chrono::steady_clock::now();
-  auto mcs = std::chrono::duration_cast<std::chrono::microseconds>(curt - it->second.creation).count();
+  auto mcs = std::chrono::duration_cast<std::chrono::microseconds>(
+      curt - it->second.creation)
+                 .count();
   auto sec = mcs / 1000000L;
   auto part = mcs % 1000000L;
   it->second.file << std::setfill('0') << std::setw(4) << sec << "."
-                  << std::setfill('0') << std::setw(6) << part
-                  << ": " << msg << std::endl;
+                  << std::setfill('0') << std::setw(6) << part << ": " << msg
+                  << std::endl;
 }

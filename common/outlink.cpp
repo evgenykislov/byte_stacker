@@ -17,20 +17,23 @@ const char kLogPrefix[] = "/var/log/stacker/cnt_";
 std::shared_ptr<OutLink> OutLink::CreateOutLink(ConnectID cnt,
     boost::asio::ip::tcp::socket&& socket, const Settings& cfg,
     Tracer* tracer) {
-  return std::shared_ptr<OutLink>(new OutLink(cnt, std::move(socket), cfg, tracer));
+  return std::shared_ptr<OutLink>(
+      new OutLink(cnt, std::move(socket), cfg, tracer));
 }
 
 
 std::shared_ptr<OutLink> OutLink::CreateOutLink(ConnectID cnt,
-    boost::asio::io_context& ctx,
-    std::string address, uint16_t port, const Settings& cfg, Tracer* tracer) {
-  return std::shared_ptr<OutLink>(new OutLink(cnt, ctx, address, port, cfg, tracer));
+    boost::asio::io_context& ctx, std::string address, uint16_t port,
+    const Settings& cfg, Tracer* tracer) {
+  return std::shared_ptr<OutLink>(
+      new OutLink(cnt, ctx, address, port, cfg, tracer));
 }
 
 
-OutLink::OutLink(ConnectID cnt,
-    boost::asio::ip::tcp::socket&& socket, const Settings& cfg, Tracer* tracer)
-    : connect_id_(cnt), tracer_(tracer),
+OutLink::OutLink(ConnectID cnt, boost::asio::ip::tcp::socket&& socket,
+    const Settings& cfg, Tracer* tracer)
+    : connect_id_(cnt),
+      tracer_(tracer),
       socket_(std::move(socket)),
       resolver_(socket_.get_executor()),
       hoster_(nullptr),
@@ -109,8 +112,7 @@ void OutLink::CancelReadWrite() {
 
 
 OutLink::OutLink(ConnectID cnt, boost::asio::io_context& ctx,
-    std::string address,
-    uint16_t port, const Settings& cfg, Tracer* tracer)
+    std::string address, uint16_t port, const Settings& cfg, Tracer* tracer)
     : connect_id_(cnt),
       tracer_(tracer),
       socket_(ctx),
@@ -174,7 +176,6 @@ void OutLink::RequestRead() {
 
 void OutLink::RequestReadProcessing(
     const boost::system::error_code& err, std::size_t bytes_transferred) {
-  //        trlog("-- Read some from outlink socket\n");
   if (!err) {
     // Пришли данные
     if (bytes_transferred > 0) {
@@ -194,12 +195,20 @@ void OutLink::RequestReadProcessing(
     // Есть ошибки
     assert(err);
 
+    if (tracer_) {
+      tracer_->Message(connect_id_, "Reading returns error/cancel");
+    }
+
     if (err == boost::asio::error::operation_aborted) {
       // Отменили все операции: кто-то вызвал cancel(). Ничего не делаем.
     } else if (err == boost::asio::error::eof ||
                err == boost::asio::error::connection_reset ||
                err == boost::asio::error::connection_aborted) {
       // Соединение закрыто. По тем или иным причинам
+      if (tracer_) {
+        tracer_->Message(connect_id_, "  Reading: connection closed");
+      }
+
       connected_socket_ = false;
     }
     // Ошибка чтения. Обычные ситуации:
@@ -224,19 +233,25 @@ void OutLink::RequestReadIdle() {
   std::chrono::milliseconds intrv{kReadIdleTimeout};
   read_idle_timer_.expires_after(intrv);
   read_idle_timer_.async_wait([selfptr](const boost::system::error_code& err) {
+    if (selfptr->tracer_) {
+      selfptr->tracer_->Message(selfptr->connect_id_, "Idle finished");
+    }
+
     if (err) {
       // Ошибка на ожидание перед чтением.
       // Скорее всего всё закрывается
+      if (selfptr->tracer_) {
+        selfptr->tracer_->Message(selfptr->connect_id_, "  idle-cancel-all");
+      }
+
       selfptr->read_processing_ = false;
       selfptr->CancelReadWrite();
       selfptr->CheckReadyClose();
       return;
     }
 
-    if (selfptr->cfg_settings_.LogOutlinkPacket) {
-      std::stringstream s;
-      s << "Connect " << selfptr->selfid_str_ << ": read resuming";
-      selfptr->cfg_settings_.OutputLog(s.str());
+    if (selfptr->tracer_) {
+      selfptr->tracer_->Message(selfptr->connect_id_, "Reading go");
     }
 
     selfptr->RequestRead();
@@ -246,15 +261,21 @@ void OutLink::RequestReadIdle() {
 
 void OutLink::RequestConnect() {
   if (resolved_points_.empty()) {
+    if (tracer_) {
+      tracer_->Message(
+          connect_id_, "Nowhere to connect: resolving hasn't any points");
+    }
+
     // TODO Process errors
     return;
   }
 
-  // TRACE
-  //  auto ep = resolved_points_.front();
-  //  trlog(
-  //      "-- Try connect to %s:%u\n", ep.address().to_string().c_str(),
-  //      ep.port());
+  if (tracer_) {
+    std::stringstream ss;
+    auto ep = resolved_points_.front();
+    ss << "Connecting to " << ep.address().to_string() << ":" << ep.port();
+    tracer_->Message(connect_id_, ss.str());
+  }
 
   auto selfptr = shared_from_this();
   socket_.async_connect(resolved_points_.front(),
@@ -265,14 +286,19 @@ void OutLink::RequestConnect() {
 
 void OutLink::RequestConnectProcessing(const boost::system::error_code& error) {
   if (error) {
-    std::printf("ERROR: -- Connecting error: %s\n", error.message().c_str());
-    std::cout.flush();
+    if (tracer_) {
+      std::stringstream ss;
+      ss << "Can't connect: " << error.message();
+      tracer_->Message(connect_id_, ss.str());
+    }
+
     // Неподключились. Текущую точку удаляем, берём следующую
     resolved_points_.pop_front();
     RequestConnect();
   } else {
-    // TRACE
-    //    trlog("-- Connected. Start reading/writing\n");
+    if (tracer_) {
+      tracer_->Message(connect_id_, "Connected now. Start reading and writing");
+    }
 
     read_processing_ = true;
     connected_socket_ = true;
@@ -288,6 +314,10 @@ void OutLink::RequestWrite() {
 
   std::unique_lock lk(write_chunks_lock_);
   if (stop_write_immediate_) {
+    if (tracer_) {
+      tracer_->Message(connect_id_, "Stop writing now");
+    }
+
     CancelReadWrite();
     write_processing_ = false;
     CheckReadyClose();
@@ -296,10 +326,9 @@ void OutLink::RequestWrite() {
   FillNetworkBuffer();
   if (network_write_buffer_.empty()) {
     if (stop_after_all_write_) {
-      if (cfg_settings_.LogOutlinkPacket) {
-        std::stringstream s;
-        s << "Connect " << selfid_str_ << ": all data written. Cancel and Stop";
-        cfg_settings_.OutputLog(s.str());
+      if (tracer_) {
+        tracer_->Message(
+            connect_id_, "PreStop: All data written. Cancel and Stop");
       }
 
       CancelReadWrite();
@@ -309,30 +338,34 @@ void OutLink::RequestWrite() {
     }
 
     // Пока нечего передавать - включаем ожидание
+    if (tracer_) {
+      tracer_->Message(connect_id_, "---- Nothing to write. Waiting");
+    }
+
     //    trlog("-- Nothing write. Use idle timeout\n");
     auto selfptr = shared_from_this();
     std::chrono::milliseconds intrv{kWriteIdleTimeout};
     write_idle_timer_.expires_after(intrv);
-    write_idle_timer_.async_wait(
-        [selfptr](const boost::system::error_code& err) {
-          if (!err) {
-            //            trlog("-- Write idles for timeout. Connect %s\n",
-            //                uuids::to_string(selfptr->selfid_).c_str());
-          }
-          selfptr->RequestWrite();
-        });
+    write_idle_timer_.async_wait([selfptr](
+                                     const boost::system::error_code& err) {
+      if (selfptr->tracer_) {
+        selfptr->tracer_->Message(selfptr->connect_id_, "  Return to writing");
+      }
+
+      if (!err) {
+        // TODO Error or NotError
+      }
+
+      selfptr->RequestWrite();
+    });
     return;
   }
   lk.unlock();
 
-  //  trlog("-- Writing %u bytes to outlink socket\n",
-  //      network_write_buffer_.size());
-
-  if (cfg_settings_.LogOutlinkPacket) {
-    std::stringstream s;
-    s << "Connect " << selfid_str_ << ": start writing "
-      << network_write_buffer_.size() << " bytes";
-    cfg_settings_.OutputLog(s.str());
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "Writing " << network_write_buffer_.size() << " bytes";
+    tracer_->Message(connect_id_, ss.str());
   }
 
   auto selfptr = shared_from_this();
@@ -349,12 +382,17 @@ void OutLink::RequestWriteProcessing(
     const boost::system::error_code& error, std::size_t bytes_transferred) {
   // Проверка на всякие ошибки
   if (error || bytes_transferred == 0) {
-    LogWrite(": CLOSE: Write operation returns error\n");
+    if (tracer_) {
+      tracer_->Message(connect_id_, "Write operation returns error");
+    }
+
     write_processing_ = false;
   }
   if (bytes_transferred > network_write_buffer_.size()) {
-    assert(false);
-    LogWrite(": CLOSE: Writes over-more data\n");
+    if (tracer_) {
+      tracer_->Message(connect_id_, "LOGIC_ERROR: Writes over-more data");
+    }
+
     write_processing_ = false;
   }
 
@@ -365,15 +403,15 @@ void OutLink::RequestWriteProcessing(
   }
 
   written_volume_ += bytes_transferred;
-  LogWrite("<- Written %" PRIu64 " bytes", written_volume_.load());
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "Written " << bytes_transferred
+       << " bytes. Summ: " << written_volume_.load();
+    tracer_->Message(connect_id_, ss.str());
+  }
+
   network_write_buffer_.erase(network_write_buffer_.begin(),
       network_write_buffer_.begin() + bytes_transferred);
-  if (cfg_settings_.LogOutlinkPacket) {
-    std::stringstream s;
-    s << "Connect " << selfid_str_ << ": written " << bytes_transferred
-      << " bytes";
-    cfg_settings_.OutputLog(s.str());
-  }
 
   RequestWrite();
 }
@@ -390,6 +428,10 @@ void OutLink::CheckReadyCloseProcessing() {
   if (!read_processing_ && !write_processing_) {
     // Готовый к вызову удалителя
     if (!close_invoked_.test_and_set()) {
+      if (tracer_) {
+        tracer_->Message(connect_id_, "Check ready-invoke to close");
+      }
+
       // Ранее закрытие ещё не вызывалось
       if (socket_.is_open()) {
         boost::system::error_code error;
@@ -398,14 +440,21 @@ void OutLink::CheckReadyCloseProcessing() {
         if (connected_socket_) {
           socket_.shutdown(boost::asio::socket_base::shutdown_both, error);
           if (error) {
-            trlog(
-                "Socket shutdown returns error: %s\n", error.message().c_str());
+            if (tracer_) {
+              std::stringstream ss;
+              ss << "Socket shutdown returns error: " << error.message();
+              tracer_->Message(connect_id_, ss.str());
+            }
           }
         }
 
         socket_.close(error);
         if (error) {
-          trlog("Socket close returns error: %s\n", error.message().c_str());
+          if (tracer_) {
+            std::stringstream ss;
+            ss << "Socket close returns error: " << error.message();
+            tracer_->Message(connect_id_, ss.str());
+          }
         }
         assert(!socket_.is_open());
       }
@@ -419,7 +468,10 @@ void OutLink::ResolverProcessing(const boost::system::error_code& err,
   if (err) {
     // Неизвестный адрес, непонятно куда подключаться
     // Завершаем работу коннекта
-    LogWrite(": CLOSE: can't resolve address\n");
+    if (tracer_) {
+      tracer_->Message(connect_id_, "Unknown connection point");
+    }
+
     CheckReadyClose();
     return;
   }
@@ -431,6 +483,9 @@ void OutLink::ResolverProcessing(const boost::system::error_code& err,
 
   // Прим.: пустой список конечных точек - это поведение будет
   // обработано на этапе коннекта
+  if (tracer_) {
+    tracer_->Message(connect_id_, "Resolving completed. Start connecting");
+  }
 
   RequestConnect();
 }
@@ -441,26 +496,33 @@ OutLink::~OutLink() {
   // доптаймауту
 }
 
-void OutLink::Run(TrunkLink* hoster, ConnectID cnt) {
+void OutLink::Run(TrunkLink* hoster,
+    ConnectID cnt) {  // TODO Remove cnt argument. Outlink knows its connection
+                      // id at constructing
   assert(hoster);
   hoster_ = hoster;
   selfid_ = cnt;
   selfid_str_ = uuids::to_string(cnt);
 
-#ifdef CONNECT_LOG
-  std::string fn = kLogPrefix;
-  fn += uuids::to_string(cnt);
-  log_.open(fn, std::ios_base::trunc);  // Не лочится, т.к. потокобезопасная
-#endif
+  if (tracer_) {
+    tracer_->Message(connect_id_, "++ Running");
+  }
 
   if (socket_.is_open()) {
+    if (tracer_) {
+      tracer_->Message(connect_id_, "Request reading and writing");
+    }
+
     read_processing_ = true;
     RequestRead();
     write_processing_ = true;
     RequestWrite();
-    LogWrite("Run outlink by opened socket\n");
   } else {
-    LogWrite("Run outlink for %s:%s\n", host_.c_str(), service_.c_str());
+    if (tracer_) {
+      std::stringstream ss;
+      ss << "Run outlink for " << host_ << ":" << service_;
+      tracer_->Message(connect_id_, ss.str());
+    }
 
     auto selfptr = shared_from_this();
     resolver_.async_resolve(host_, service_,
@@ -476,18 +538,42 @@ void OutLink::SendData(uint32_t chunk_id, const void* data, size_t data_size) {
   std::lock_guard lk(write_chunks_lock_);
   if (chunk_id < next_write_chunk_id_) {
     // Пришёл очень старый пакет. Отбрасываем его
+    if (tracer_) {
+      std::stringstream ss;
+      ss << "? Strange packet to write " << data_size << " bytes. Drop It!";
+      tracer_->Message(connect_id_, ss.str());
+    }
+
     return;
   }
   if (stop_write_chunk_id_ != kUndefinedChunkID &&
       chunk_id >= stop_write_chunk_id_) {
     // Пришёл пакет после закрытия соединения
     // Как-бы это ошибка логики. В любом случае, этот пакет отбрасывается
+    if (tracer_) {
+      std::stringstream ss;
+      ss << "? Packet to write after closing. Size " << data_size
+         << " bytes. And Drop It!";
+      tracer_->Message(connect_id_, ss.str());
+    }
+
     assert(false);
     return;
   }
+
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "Get chunk to write. ID: " << chunk_id;
+    tracer_->Message(connect_id_, ss.str());
+  }
+
   auto chunk = write_chunks_.find(chunk_id);
   if (chunk != write_chunks_.end()) {
     // Такой чанк уже есть, пришёл дубликат. Отбрасываем его
+    if (tracer_) {
+      tracer_->Message(connect_id_, "  Chunk double. Drop!");
+    }
+
     return;
   }
 
@@ -498,38 +584,45 @@ void OutLink::SendData(uint32_t chunk_id, const void* data, size_t data_size) {
 
   if (chunk_id != next_write_chunk_id_) {
     // Пришедший пакет слишком новый, сначала нужно получить другой. Пока ждём
+    if (tracer_) {
+      tracer_->Message(connect_id_, "Chunk from neat future. Some wait");
+    }
+
     return;
   }
 
   write_idle_timer_.cancel();  // Отменяем таймер на ожидание следующей записи
 }
 
-void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
-  if (cfg_settings_.LogOutlinkPacket) {
-    std::stringstream s;
-    s << "Connect " << selfid_str_ << ": Stop outlink due to trunk request";
-    cfg_settings_.OutputLog(s.str());
-  }
 
-  switch (reason) {
-    case kStopReleaseCommand:
-      // Корректное завершение, всё ок
-      LogWrite("Closing successfull\n");
-      break;
-    case kStopNoLive:
-      LogWrite("FORCE CLOSE: no-live\n");
-      break;
-    case kStopChunkAbsent:
-      LogWrite(": CLOSE: chunk absent\n");
-      break;
-    default:
-      LogWrite(": CLOSE: unknown reason\n");
+void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
+  if (tracer_) {
+    std::string msg = "Stop outlink due to trunk request: ";
+    switch (reason) {
+      case kStopReleaseCommand:
+        // Корректное завершение, всё ок
+        msg += "Closing successfull\n";
+        break;
+      case kStopNoLive:
+        msg += "FORCE CLOSE: no-live\n";
+        break;
+      case kStopChunkAbsent:
+        msg += ": CLOSE: chunk absent\n";
+        break;
+      default:
+        msg += ": CLOSE: unknown reason\n";
+    }
+
+    tracer_->Message(connect_id_, msg);
   }
 
   std::unique_lock lk(write_chunks_lock_);
   if (stop_write_chunk_id_ != kUndefinedChunkID &&
       stop_write_chunk_id_ < stop_chunk) {
     // Остановка уже инициирована и указан более ранний чанк
+    if (tracer_) {
+      tracer_->Message(connect_id_, "? Stop has already requested early");
+    }
     return;
   }
 
@@ -540,6 +633,9 @@ void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
     // В любом случае, данных больше не планируется
     // Закрываемся тем, что есть на текущий момент
     //    trlog("Outlink close on current point\n");
+    if (tracer_) {
+      tracer_->Message(connect_id_, "Stop now");
+    }
 
     stop_write_chunk_id_ = next_write_chunk_id_;
     stop_after_all_write_ = true;
@@ -551,8 +647,13 @@ void OutLink::Stop(uint32_t stop_chunk, StopReason reason) {
 
   // Так, планируются ещё данные к передаче
   assert(stop_chunk > next_write_chunk_id_);
-  LogWrite("  close will be  later: needs send %u packets",
-      stop_chunk - next_write_chunk_id_);
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "Close will be later. Needs to send "
+       << stop_chunk - next_write_chunk_id_ << " packets";
+    tracer_->Message(connect_id_, ss.str());
+  }
+
   stop_write_chunk_id_ = stop_chunk;
   for (auto it = write_chunks_.begin(); it != write_chunks_.end(); /* noop */) {
     if (it->first >= stop_chunk) {
@@ -568,7 +669,10 @@ uint64_t OutLink::GetWrittenVolume() { return written_volume_; }
 void OutLink::SetOtherSideWrittenVolume(uint64_t volume) {
   auto prev = otherside_written_volume_.exchange(volume);
   if (prev != volume) {
-    LogWrite(
-        "--- Delivered %" PRIu64 " bytes", otherside_written_volume_.load());
+    if (tracer_) {
+      std::stringstream ss;
+      ss << "Delivered " << otherside_written_volume_.load() << " bytes";
+      tracer_->Message(connect_id_, ss.str());
+    }
   }
 }

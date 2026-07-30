@@ -29,6 +29,7 @@ class Tracer {
   struct StreamInfo {
     std::ofstream file;
     std::chrono::steady_clock::time_point creation;
+    std::filesystem::path write_path;
   };
 
   std::filesystem::path base_;

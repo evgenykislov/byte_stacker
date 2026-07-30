@@ -601,6 +601,10 @@ void TrunkLink::RemoveOutLink(uuids::uuid cnt) {
   auto tail = std::remove_if(out_links_.begin(), out_links_.end(),
       [cnt](OutLinkInfo info) { return cnt == info.connect_id; });
   out_links_.erase(tail, out_links_.end());
+
+  if (tracer_) {
+    tracer_->FinishTrace(cnt);
+  }
 }
 
 
@@ -610,7 +614,6 @@ TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     : TrunkLink(ctx, false, cfg, tracer),
       points_(trpoints),
       trunk_socket_(ctx, boost::asio::ip::udp::v4()) {
-
   // Получим информацию о сокете
   boost::asio::socket_base::receive_buffer_size option;
   trunk_socket_.get_option(option);
