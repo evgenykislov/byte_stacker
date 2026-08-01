@@ -116,19 +116,20 @@ void TrunkLink::SendLivePacket() {
     // Сначала удалим мёртвые соединения
     std::chrono::milliseconds forceto{kForceRemoveLinkTimeout};
     if (curt > (item.deadlink_timeout_ + forceto)) {
-      trlog("-- FORCE REMOVE connection %s\n",
-          uuids::to_string(item.connect_id).c_str());
-      error_log_ << timemark(true) << ": force remove "
-                 << uuids::to_string(item.connect_id) << " outlink"
-                 << std::endl;
+      if (tracer_) {
+        tracer_->Message(item.connect_id, "LONG-DEAD CONNECTION. Force remove");
+      }
+
       dead_cnt.push_back(item.connect_id);
       continue;
     }
 
     assert(item.link.get());
     if (curt > item.deadlink_timeout_) {
-      //      trlog("-- Dead connect %s - removing\n",
-      //          uuids::to_string(item.connect_id).c_str());
+      if (tracer_) {
+        tracer_->Message(item.connect_id, "no-live connect");
+      }
+
       trunk_live_ok.clear();  // Есть проблемы с live-пакетами
       item.link->Stop(0, OutLink::kStopNoLive);
       continue;
@@ -146,6 +147,9 @@ void TrunkLink::SendLivePacket() {
     pi.PacketData = buf;
     pi.PacketSize = sizeof(PacketLive);
     SendPacket(pi);  // Live-пакеты шлются всегда, даже при заполненном буфере
+    if (tracer_) {
+      tracer_->Message(item.connect_id, "      live");
+    }
   }
   lk.unlock();
 
@@ -157,6 +161,10 @@ void TrunkLink::SendLivePacket() {
 
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
+  if (tracer_) {
+    tracer_->Message(cnt, "-> trunk");
+  }
+
   in_stream_counter_ += data_size;
   SendCmdData(cnt, data, data_size,
       server_side_ ? kTrunkCommandDataIn : kTrunkCommandDataOut);
@@ -201,6 +209,11 @@ void TrunkLink::SendCmdData(
   info.PacketID = pkt_index;
   info.PacketData = buf;
   info.PacketSize = static_cast<uint32_t>(sizeof(PacketData) + data_size);
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "Form packet #" << pkt_index << " to trunk";
+    tracer_->Message(cnt, ss.str());
+  }
 
   // Отправим пакет в очередь (дожидаться свободного буфера)
   std::unique_lock lks(packet_send_queue_lock_);
