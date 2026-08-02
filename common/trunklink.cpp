@@ -875,9 +875,9 @@ void TrunkServer::RequestReadingTrunk(size_t index) {
 
 void TrunkServer::ProcessConnectData(
     uuids::uuid cnt, const PacketConnect* info) {
-  //  trlog("-- Request connect to point %u. Id: %s\n",
-  //  info->PointID,
-  //      uuids::to_string(cnt).c_str());
+  if (tracer_) {
+    tracer_->CreateTrace(cnt);
+  }
 
   // Отправим подтверждение на получение пакета
   assert(sizeof(PacketHeader) <= kPacketBufferSize);
