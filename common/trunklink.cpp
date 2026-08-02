@@ -572,8 +572,14 @@ void TrunkLink::OnCacheResend() {
       std::remove_if(packet_data_cache_.begin(), packet_data_cache_.end(),
           [curt](PacketDataCache& item) { return curt > item.Deadline; });
   if (tail != packet_data_cache_.end()) {
+    if (tracer_) {
+      for (auto it = tail; it != packet_data_cache_.end(); ++it) {
+        std::stringstream ss;
+        ss << "Remove deadline packet #" << it->info.PacketID;
+        tracer_->Message(it->info.CtxID, ss.str());
+      }
+    }
     deadp = packet_data_cache_.end() - tail;
-    //    trlog("-- Removing %u deadline packets\n", (unsigned int)deadp);
     packet_data_cache_.erase(tail, packet_data_cache_.end());
   }
 

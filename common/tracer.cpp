@@ -111,3 +111,12 @@ void Tracer::Message(uuids::uuid id, const std::string& msg) {
                   << std::setfill('0') << std::setw(6) << part << ": " << msg
                   << std::endl;
 }
+
+void Tracer::CommonMessage(const std::string& msg) {
+  std::ofstream f(storage_path_ / "messages.txt", std::ios_base::app);
+  if (!f) {
+    return;
+  }
+
+  f << timemark() << ":" << msg << std::endl;
+}

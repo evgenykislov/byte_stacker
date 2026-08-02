@@ -20,6 +20,9 @@ class Tracer {
 
   void Message(uuids::uuid id, const std::string& msg);
 
+  //! Выдать общее сообщение, не привязанное к соединению
+  void CommonMessage(const std::string& msg);
+
  private:
   Tracer() = delete;
   Tracer(const Tracer&) = delete;
