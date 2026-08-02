@@ -13,6 +13,12 @@ struct Settings {
   bool LogFormatError;  //!< Логировать ошибки формата, размера и т.д.
   bool LogResendPacket;  //!< Логировать перепосылку пакета
 
+  //! Путь для трейсов активных соединений (в процессе активности)
+  std::filesystem::path trace_storage_path;
+
+  //! Путь для трейсов корректно завершённых соединений (чтобы не мешались)
+  std::filesystem::path trace_completed_path;
+
   // TODO Descr
   // Не может быть nullptr
   void (*OutputLog)(std::string message);

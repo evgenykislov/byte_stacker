@@ -41,8 +41,6 @@ int main(int argc, char** argv) {
       trp;  //!< Транковые точки для обмена данными
   Settings cfg;
   DefaultSettings(cfg);
-  Tracer tracer_obj;
-  Tracer* tracer = &tracer_obj;
 
   for (int i = 1; i < argc; ++i) {
     std::string a(argv[i]);
@@ -86,6 +84,11 @@ int main(int argc, char** argv) {
     return 3;
   }
 
+  std::shared_ptr<Tracer> tracer;
+  if (!cfg.trace_storage_path.empty()) {
+    tracer = std::make_shared<Tracer>(
+        cfg.trace_storage_path, cfg.trace_completed_path);
+  }
 
   try {
     boost::asio::io_context ctx;
@@ -104,13 +107,13 @@ int main(int argc, char** argv) {
           }
 
           try {
-            return OutLink::CreateOutLink(
-                cnt, ctx, it->second.Address, it->second.Port, cfg, tracer);
+            return OutLink::CreateOutLink(cnt, ctx, it->second.Address,
+                it->second.Port, cfg, tracer.get());
           } catch (...) {
           }
           return nullptr;
         },
-        cfg, tracer);
+        cfg, tracer.get());
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {

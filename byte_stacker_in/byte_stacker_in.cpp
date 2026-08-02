@@ -136,9 +136,6 @@ int main(int argc, char** argv) {
   Settings cfg;  //!< Настройки программы из конфигурационного файла
   DefaultSettings(cfg);
 
-  Tracer tracer_obj;
-  Tracer* tracer = &tracer_obj;
-
   // Разбор аргументов командной строки
   for (int i = 1; i < argc; ++i) {
     std::string a(argv[i]);
@@ -180,6 +177,12 @@ int main(int argc, char** argv) {
     return 3;
   }
 
+  std::shared_ptr<Tracer> tracer;
+  if (!cfg.trace_storage_path.empty()) {
+    tracer = std::make_shared<Tracer>(
+        cfg.trace_storage_path, cfg.trace_completed_path);
+  }
+
   try {
     boost::asio::io_context ctx;
     // Переменная на остановку
@@ -187,7 +190,7 @@ int main(int argc, char** argv) {
     bool stop_flag = false;
     std::mutex stop_lock;
 
-    TrunkClient trc(ctx, trp, cfg, tracer);
+    TrunkClient trc(ctx, trp, cfg, tracer.get());
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
@@ -200,7 +203,8 @@ int main(int argc, char** argv) {
     // Подготовка акцепторов
     std::vector<std::shared_ptr<bai::tcp::acceptor>> acceptors;
     for (auto& p : lps) {
-      auto acp = ListenLocalPoint(ctx, trc, p.first, p.second, cfg, tracer);
+      auto acp =
+          ListenLocalPoint(ctx, trc, p.first, p.second, cfg, tracer.get());
       acceptors.push_back(acp);
     }
 

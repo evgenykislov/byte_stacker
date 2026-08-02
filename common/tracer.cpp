@@ -36,7 +36,11 @@ static std::string timemark() {
 }
 
 
-Tracer::Tracer(): base_("/tmp/stacker/") {}
+Tracer::Tracer(
+    std::filesystem::path storagepath, std::filesystem::path successpath)
+    : storage_path_(storagepath), success_path_(successpath) {
+  assert(!storage_path_.empty());
+}
 
 void Tracer::CreateTrace(uuids::uuid id) {
   std::lock_guard lk(trace_lock_);
@@ -46,17 +50,19 @@ void Tracer::CreateTrace(uuids::uuid id) {
     return;
   }
 
-  std::string name = "connect-";
-  name += uuids::to_string(id);
-  auto p = base_ / name;
   storage_[id].creation = std::chrono::steady_clock::now();
   auto it = storage_.find(id);
   assert(it != storage_.end());
-  it->second.write_path = p;
-  it->second.file.open(p, std::ios_base::trunc);
+  std::string name = uuids::to_string(id);
+  it->second.path = storage_path_ / name;
+  if (!success_path_.empty()) {
+    it->second.success_path = success_path_ / name;
+  }
+  it->second.file.open(it->second.path, std::ios_base::trunc);
   if (!it->second.file) {
     // Ошибка создания файла
-    std::cerr << "ERROR!: Can't create trace file " << p << std::endl;
+    std::cerr << "ERROR!: Can't create trace file " << it->second.path
+              << std::endl;
     storage_.erase(it);
     return;
   }
@@ -77,9 +83,9 @@ void Tracer::FinishTrace(uuids::uuid id) {
   it->second.file << "--------- Завершение соединения: " << timemark()
                   << std::endl;
 
-  std::string name = uuids::to_string(id);
-  auto p = base_ / "completed" / name;
-  std::filesystem::rename(it->second.write_path, p);
+  if (!it->second.success_path.empty()) {
+    std::filesystem::rename(it->second.path, it->second.success_path);
+  }
 
   storage_.erase(it);
 }

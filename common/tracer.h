@@ -12,7 +12,7 @@
 /*! Класс для сохранения трассировки пакетов и соединений */
 class Tracer {
  public:
-  Tracer();
+  Tracer(std::filesystem::path storagepath, std::filesystem::path successpath);
   virtual ~Tracer() {}
 
   void CreateTrace(uuids::uuid id);
@@ -21,6 +21,7 @@ class Tracer {
   void Message(uuids::uuid id, const std::string& msg);
 
  private:
+  Tracer() = delete;
   Tracer(const Tracer&) = delete;
   Tracer& operator=(const Tracer&) = delete;
   Tracer(Tracer&&) = delete;
@@ -29,10 +30,12 @@ class Tracer {
   struct StreamInfo {
     std::ofstream file;
     std::chrono::steady_clock::time_point creation;
-    std::filesystem::path write_path;
+    std::filesystem::path path;
+    std::filesystem::path success_path;
   };
 
-  std::filesystem::path base_;
+  std::filesystem::path storage_path_;
+  std::filesystem::path success_path_;
   std::map<uuids::uuid, StreamInfo> storage_;
   std::mutex trace_lock_;
 };
