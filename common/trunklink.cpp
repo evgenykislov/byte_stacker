@@ -568,17 +568,23 @@ void TrunkLink::OnCacheResend() {
   std::unique_lock lk(packet_data_cache_lock_);
   auto curt = std::chrono::steady_clock::now();
 
+  auto tracer = tracer_;
+
   auto tail =
       std::remove_if(packet_data_cache_.begin(), packet_data_cache_.end(),
-          [curt](PacketDataCache& item) { return curt > item.Deadline; });
+          [curt, tracer](PacketDataCache& item) {
+            if (curt > item.Deadline) {
+              if (tracer) {
+                std::stringstream ss;
+                ss << "Remove deadline packet #" << item.info.PacketID;
+                tracer->Message(item.info.CtxID, ss.str());
+              }
+
+              return true;
+            }
+            return false;
+          });
   if (tail != packet_data_cache_.end()) {
-    if (tracer_) {
-      for (auto it = tail; it != packet_data_cache_.end(); ++it) {
-        std::stringstream ss;
-        ss << "Remove deadline packet #" << it->info.PacketID;
-        tracer_->Message(it->info.CtxID, ss.str());
-      }
-    }
     deadp = packet_data_cache_.end() - tail;
     packet_data_cache_.erase(tail, packet_data_cache_.end());
   }
@@ -587,12 +593,10 @@ void TrunkLink::OnCacheResend() {
        ++it) {
     if (curt > it->NextSend) {
       // Перепосылаем пакет
-      if (cfg_settings_.LogResendPacket) {
-        std::stringstream s;
-        s << "Trunk Connect " << uuids::to_string(it->info.CtxID)
-          << ": re-send packet " << it->info.PacketID << ", "
-          << it->info.PacketSize << " bytes";
-        cfg_settings_.OutputLog(s.str());
+      if (tracer_) {
+        std::stringstream ss;
+        ss << "Resend packet #" << it->info.PacketID;
+        tracer_->Message(it->info.CtxID, ss.str());
       }
 
       it->NextSend = curt + std::chrono::milliseconds(kResendTimeout);
