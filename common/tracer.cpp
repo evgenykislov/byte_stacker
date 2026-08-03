@@ -82,9 +82,14 @@ void Tracer::FinishTrace(uuids::uuid id) {
 
   it->second.file << "--------- Завершение соединения: " << timemark()
                   << std::endl;
+  it->second.file.close();
 
   if (!it->second.success_path.empty()) {
-    std::filesystem::rename(it->second.path, it->second.success_path);
+    std::error_code err;
+    std::filesystem::rename(it->second.path, it->second.success_path, err);
+    if (err) {
+      std::cerr << "Renaming trace log throws error: " << err.message() << std::endl;
+    }
   }
 
   storage_.erase(it);
