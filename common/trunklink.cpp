@@ -480,6 +480,7 @@ void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
       });
   if (tail != packet_data_cache_.end()) {
     // Такой пакет в кэше есть
+    // TODO Исправить подсчёт пинга. В этот момент пакеты в хвосте уже невалидны
     ping = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - tail->FirstSend)
                .count();
