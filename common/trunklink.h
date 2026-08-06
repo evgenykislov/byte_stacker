@@ -191,6 +191,11 @@ class TrunkLink {
   \param pkt отправляемый пакет */
   virtual void SendPacket(PacketInfo pkt) = 0;
 
+
+  /*! Отправить пакет по транку через заданный сокет (по индексу) и целевай адрес.
+  Ошимбки не контролируются, переотправки нет */
+  virtual void SendPacket(size_t socket_index, boost::asio::ip::udp::endpoint target, PacketInfo pkt) = 0;
+
   // Обработчики отдельных команд
   virtual void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info){};
   virtual void ProcessAckConnectData(
@@ -407,6 +412,9 @@ class TrunkClient: public TrunkLink {
   int GetAvailableBuffer(ConnectID ctx) override;
 
   void SendPacket(PacketInfo pkt) override;
+  void SendPacket(size_t socket_index, boost::asio::ip::udp::endpoint target,
+      PacketInfo pkt) override;
+
 
   void ProcessAckConnectData(
       uuids::uuid cnt, const PacketHeader* info) override;
@@ -460,7 +468,7 @@ class TrunkServer: public TrunkLink {
   std::mutex
       buffer_lock_;  //!< Блокировка для пересчёта свободного размера буфера
 
-  /*! Информация для связи с клиеннтами по транковой связи: какой сокет
+  /*! Информация для связи с клиентами по транковой связи: какой сокет
   использовать и конечную точку */
   struct ConnectInfo {
     uuids::uuid connect;
@@ -490,6 +498,8 @@ class TrunkServer: public TrunkLink {
   int GetAvailableBuffer(ConnectID ctx) override;
 
   void SendPacket(PacketInfo pkt) override;
+  void SendPacket(size_t socket_index, boost::asio::ip::udp::endpoint target, PacketInfo pkt) override;
+
 
   // TODO Descr
   bool GetPacketConnectID(const void* data, size_t data_size, uuids::uuid& cnt);

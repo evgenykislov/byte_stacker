@@ -772,16 +772,17 @@ int TrunkClient::GetAvailableBuffer(ConnectID ctx) {
 }
 
 void TrunkClient::SendPacket(PacketInfo pkt) {
-  if (cfg_settings_.LogTrunkPacket) {
-    std::stringstream s;
-    s << "Trunk Connect " << uuids::to_string(pkt.CtxID) << ": send packet "
-      << pkt.PacketID << ", " << pkt.PacketSize << " bytes";
-    cfg_settings_.OutputLog(s.str());
-  }
+  // На клиентской части всего один транковый сокет, поэтому всё отправляем на
+  // 0-ой индекс
+  SendPacket(0, points_.front(), pkt); // TODO Избавиться от ещё одной виртуализации
+}
 
+
+void TrunkClient::SendPacket(size_t socket_index,
+    boost::asio::ip::udp::endpoint target, PacketInfo pkt) {
   auto pd = pkt.PacketData;
   trunk_socket_.async_send_to(boost::asio::buffer(pd.get(), pkt.PacketSize),
-      points_.front(),
+      target,
       [pd](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
 
   // Пересчитаем свободный буфер
@@ -965,17 +966,16 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
     return;
   }
 
-  if (cfg_settings_.LogTrunkPacket) {
-    std::stringstream s;
-    s << "Trunk Connect " << uuids::to_string(pkt.CtxID) << ": send packet "
-      << pkt.PacketID << ", " << pkt.PacketSize << " bytes";
-    cfg_settings_.OutputLog(s.str());
-  }
+  SendPacket(info.socket_index, info.client, pkt); // TODO Убрать линюю виртуализацию
+}
 
-  auto& ts = trunk_sockets_[info.socket_index];
+
+void TrunkServer::SendPacket(size_t socket_index,
+    boost::asio::ip::udp::endpoint target, PacketInfo pkt) {
+  auto& ts = trunk_sockets_[socket_index];
   auto buf = pkt.PacketData;
   ts.socket.async_send_to(boost::asio::buffer(buf.get(), pkt.PacketSize),
-      info.client,
+      target,
       [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
 
   // Пересчитаем свободный буфер
@@ -986,6 +986,7 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
                            // - это нормально/допустимо
   lk.unlock();
 }
+
 
 bool TrunkServer::GetPacketConnectID(
     const void* data, size_t data_size, uuids::uuid& cnt) {
