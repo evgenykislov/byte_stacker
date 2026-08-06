@@ -16,6 +16,7 @@ set(SOURCE_FILES
   "../common/outlink.cpp"
   "../common/parser.cpp"
   "../common/settings.cpp"
+  "../common/tracer.cpp"
   "../common/trunklink.cpp"
 )
 
@@ -25,6 +26,7 @@ set(HEADER_FILES
   "../common/data.h"
   "../common/parser.h"
   "../common/settings.h"
+  "../common/tracer.h"
   "../common/trunklink.h"
 )
 

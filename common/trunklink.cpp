@@ -6,6 +6,7 @@
 
 #include "settings.h"
 #include "trace.h"
+#include "tracer.h"
 
 namespace bai = boost::asio::ip;
 
@@ -23,9 +24,10 @@ void CopyConnectID(uint8_t dest[16], const uuids::uuid& src) {
 }
 
 
-TrunkLink::TrunkLink(
-    boost::asio::io_context& ctx, bool server_side, const Settings& cfg)
+TrunkLink::TrunkLink(boost::asio::io_context& ctx, bool server_side,
+    const Settings& cfg, Tracer* tracer)
     : cfg_settings_(cfg),
+      tracer_(tracer),
       server_side_(server_side),
       update_timer_(ctx),
       send_queue_timer_(ctx),
@@ -56,10 +58,11 @@ uint32_t TrunkLink::GetNextPacketIndex(ConnectID cnt) {
     if (item.connect_id == cnt) {
       auto res = item.next_index_to_trunk;
       ++item.next_index_to_trunk;
-      return res;
+      return res;  // Если номер пакета приблизится к переполнению, то он
+                   // однозначно напорется на kOverflowError
     }
   }
-  return kBadPacketIndex;
+  return kConnectionAbsentError;
 }
 
 
@@ -113,19 +116,20 @@ void TrunkLink::SendLivePacket() {
     // Сначала удалим мёртвые соединения
     std::chrono::milliseconds forceto{kForceRemoveLinkTimeout};
     if (curt > (item.deadlink_timeout_ + forceto)) {
-      trlog("-- FORCE REMOVE connection %s\n",
-          uuids::to_string(item.connect_id).c_str());
-      error_log_ << timemark(true) << ": force remove "
-                 << uuids::to_string(item.connect_id) << " outlink"
-                 << std::endl;
+      if (tracer_) {
+        tracer_->Message(item.connect_id, "LONG-DEAD CONNECTION. Force remove");
+      }
+
       dead_cnt.push_back(item.connect_id);
       continue;
     }
 
     assert(item.link.get());
     if (curt > item.deadlink_timeout_) {
-      //      trlog("-- Dead connect %s - removing\n",
-      //          uuids::to_string(item.connect_id).c_str());
+      if (tracer_) {
+        tracer_->Message(item.connect_id, "no-live connect");
+      }
+
       trunk_live_ok.clear();  // Есть проблемы с live-пакетами
       item.link->Stop(0, OutLink::kStopNoLive);
       continue;
@@ -143,6 +147,9 @@ void TrunkLink::SendLivePacket() {
     pi.PacketData = buf;
     pi.PacketSize = sizeof(PacketLive);
     SendPacket(pi);  // Live-пакеты шлются всегда, даже при заполненном буфере
+    if (tracer_) {
+      tracer_->Message(item.connect_id, "      live");
+    }
   }
   lk.unlock();
 
@@ -154,6 +161,10 @@ void TrunkLink::SendLivePacket() {
 
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
+  if (tracer_) {
+    tracer_->Message(cnt, "-> trunk");
+  }
+
   in_stream_counter_ += data_size;
   SendCmdData(cnt, data, data_size,
       server_side_ ? kTrunkCommandDataIn : kTrunkCommandDataOut);
@@ -172,9 +183,12 @@ void TrunkLink::SendCmdData(
   }
 
   auto pkt_index = GetNextPacketIndex(cnt);
-  if (pkt_index == kBadPacketIndex) {
-    // TODO ERROR
-    std::printf("ERROR: bad packet\n");
+  if (pkt_index == kConnectionAbsentError) {
+    // Соединения уже нет (дубликаты подтверждений). Ничего не делаем
+    return;
+  } else if (pkt_index == kOverflowError) {
+    // По соединению переслали очень много данных. Закрыть бы его
+    // TODO Закрыть соедидение в таком немного экзотическом случае
     return;
   }
 
@@ -195,6 +209,11 @@ void TrunkLink::SendCmdData(
   info.PacketID = pkt_index;
   info.PacketData = buf;
   info.PacketSize = static_cast<uint32_t>(sizeof(PacketData) + data_size);
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "Form packet #" << pkt_index << " to trunk";
+    tracer_->Message(cnt, ss.str());
+  }
 
   // Отправим пакет в очередь (дожидаться свободного буфера)
   std::unique_lock lks(packet_send_queue_lock_);
@@ -461,6 +480,7 @@ void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
       });
   if (tail != packet_data_cache_.end()) {
     // Такой пакет в кэше есть
+    // TODO Исправить подсчёт пинга. В этот момент пакеты в хвосте уже невалидны
     ping = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - tail->FirstSend)
                .count();
@@ -549,12 +569,24 @@ void TrunkLink::OnCacheResend() {
   std::unique_lock lk(packet_data_cache_lock_);
   auto curt = std::chrono::steady_clock::now();
 
+  auto tracer = tracer_;
+
   auto tail =
       std::remove_if(packet_data_cache_.begin(), packet_data_cache_.end(),
-          [curt](PacketDataCache& item) { return curt > item.Deadline; });
+          [curt, tracer](PacketDataCache& item) {
+            if (curt > item.Deadline) {
+              if (tracer) {
+                std::stringstream ss;
+                ss << "Remove deadline packet #" << item.info.PacketID;
+                tracer->Message(item.info.CtxID, ss.str());
+              }
+
+              return true;
+            }
+            return false;
+          });
   if (tail != packet_data_cache_.end()) {
     deadp = packet_data_cache_.end() - tail;
-    //    trlog("-- Removing %u deadline packets\n", (unsigned int)deadp);
     packet_data_cache_.erase(tail, packet_data_cache_.end());
   }
 
@@ -562,12 +594,10 @@ void TrunkLink::OnCacheResend() {
        ++it) {
     if (curt > it->NextSend) {
       // Перепосылаем пакет
-      if (cfg_settings_.LogResendPacket) {
-        std::stringstream s;
-        s << "Trunk Connect " << uuids::to_string(it->info.CtxID)
-          << ": re-send packet " << it->info.PacketID << ", "
-          << it->info.PacketSize << " bytes";
-        cfg_settings_.OutputLog(s.str());
+      if (tracer_) {
+        std::stringstream ss;
+        ss << "Resend packet #" << it->info.PacketID;
+        tracer_->Message(it->info.CtxID, ss.str());
       }
 
       it->NextSend = curt + std::chrono::milliseconds(kResendTimeout);
@@ -595,22 +625,19 @@ void TrunkLink::RemoveOutLink(uuids::uuid cnt) {
   auto tail = std::remove_if(out_links_.begin(), out_links_.end(),
       [cnt](OutLinkInfo info) { return cnt == info.connect_id; });
   out_links_.erase(tail, out_links_.end());
+
+  if (tracer_) {
+    tracer_->FinishTrace(cnt);
+  }
 }
 
 
 TrunkClient::TrunkClient(boost::asio::io_context& ctx,
     const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
-    const Settings& cfg)
-    : TrunkLink(ctx, false, cfg),
+    const Settings& cfg, Tracer* tracer)
+    : TrunkLink(ctx, false, cfg, tracer),
       points_(trpoints),
       trunk_socket_(ctx, boost::asio::ip::udp::v4()) {
-  // Инициализация генератора uuid
-  std::random_device rd;
-  auto seed_data = std::array<int, std::mt19937::state_size>{};
-  std::generate(std::begin(seed_data), std::end(seed_data), std::ref(rd));
-  std::seed_seq seq(std::begin(seed_data), std::end(seed_data));
-  generator_ = std::mt19937(seq);
-
   // Получим информацию о сокете
   boost::asio::socket_base::receive_buffer_size option;
   trunk_socket_.get_option(option);
@@ -691,8 +718,8 @@ TrunkClient::~TrunkClient() {}
 
 void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
   assert(link);
-  uuids::uuid_random_generator gen{generator_};
-  uuids::uuid cnt = gen();
+
+  auto cnt = link->GetConnectID();
 
   std::unique_lock lk(out_links_lock_);
   auto exist_link = GetOutLinkWOLock(cnt);
@@ -700,6 +727,8 @@ void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
     // Такая внешняя связь уже существует
     // Странно, но теоретически возможно
     // Ничего не делаем, выходим, забываем про эту связь
+    std::cerr << "??: uuid generator creates double: " << uuids::to_string(cnt)
+              << std::endl;
     return;
   }
   IntAddOutLinkWOLock(cnt, link);
@@ -783,9 +812,11 @@ void TrunkClient::ProcessAckConnectData(
 
 TrunkServer::TrunkServer(boost::asio::io_context& ctx,
     const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
-    std::function<std::shared_ptr<OutLink>(PointID)> link_fabric,
-    const Settings& cfg)
-    : TrunkLink(ctx, true, cfg), asio_context_(ctx), link_fabric_(link_fabric) {
+    std::function<std::shared_ptr<OutLink>(PointID, ConnectID)> link_fabric,
+    const Settings& cfg, Tracer* tracer)
+    : TrunkLink(ctx, true, cfg, tracer),
+      asio_context_(ctx),
+      link_fabric_(link_fabric) {
   for (size_t i = 0; i < trpoints.size(); ++i) {
     for (auto& p : trpoints[i]) {
       auto& item =
@@ -849,9 +880,9 @@ void TrunkServer::RequestReadingTrunk(size_t index) {
 
 void TrunkServer::ProcessConnectData(
     uuids::uuid cnt, const PacketConnect* info) {
-  //  trlog("-- Request connect to point %u. Id: %s\n",
-  //  info->PointID,
-  //      uuids::to_string(cnt).c_str());
+  if (tracer_) {
+    tracer_->CreateTrace(cnt);
+  }
 
   // Отправим подтверждение на получение пакета
   assert(sizeof(PacketHeader) <= kPacketBufferSize);
@@ -875,7 +906,7 @@ void TrunkServer::ProcessConnectData(
     return;
   }
   // Создадим внешний коннект
-  auto ol = link_fabric_(info->PointID);
+  auto ol = link_fabric_(info->PointID, cnt);
   if (!ol) {
     // TODO ERROR Can't create link
     return;

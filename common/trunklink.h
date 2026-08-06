@@ -107,13 +107,14 @@ struct StatInfo {
 
 class OutLink;
 struct Settings;
+class Tracer;
 
 /*! \class TrunkLink Общая часть алгоритмов транковой связи. TrunkLink не
 предназначен для самостоятельного использвоания, только как базовый класс */
 class TrunkLink {
  public:
-  TrunkLink(
-      boost::asio::io_context& ctx, bool server_side, const Settings& cfg);
+  TrunkLink(boost::asio::io_context& ctx, bool server_side, const Settings& cfg,
+      Tracer* tracer);
 
   virtual ~TrunkLink() {}
 
@@ -137,7 +138,9 @@ class TrunkLink {
 
  protected:
   static const uint32_t kEmptyPacketID = static_cast<uint32_t>(-1);
-  static const uint32_t kBadPacketIndex = static_cast<uint32_t>(-2);
+  static const uint32_t kConnectionAbsentError = static_cast<uint32_t>(-2);
+  static const uint32_t kOverflowError = static_cast<uint32_t>(-3);
+  static_assert(kOverflowError < kConnectionAbsentError);
 
   static const size_t kPacketBufferSize = 1000;
   using PacketBuffer = uint8_t[kPacketBufferSize];
@@ -165,6 +168,9 @@ class TrunkLink {
   std::mutex out_links_lock_;
 
   const Settings& cfg_settings_;
+
+  // TODO Descr
+  Tracer* tracer_;
 
   // TODO parameter client - remove ???
   void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
@@ -301,7 +307,12 @@ class TrunkLink {
   std::ofstream error_log_;
   std::mutex error_log_lock_;
 
-  // TODO Descr + kBadPacketIndex
+  /*! Выдаёт последовательные номера пакетов для задаваемого соединения
+  \param cnt идентификатор соединения, для которого выдать номер пакета
+  \return номер пакета в случае успеха. Может вернуться ошибка:
+    kOverflowError если счётчик переполнился (нужно выкачать более 3 ТБайт
+    одним соединением. TODO оценить ограничение)
+    kConnectionAbsentError соединение не найдено */
   uint32_t GetNextPacketIndex(ConnectID cnt);
 
 
@@ -329,7 +340,7 @@ class TrunkClient: public TrunkLink {
  public:
   TrunkClient(boost::asio::io_context& ctx,
       const std::vector<boost::asio::ip::udp::endpoint>& trpoints,
-      const Settings& cfg);
+      const Settings& cfg, Tracer* tracer);
   virtual ~TrunkClient();
 
   /*! Добавить новое подключение.  Подключение будет добавлено, функция его\
@@ -379,8 +390,6 @@ class TrunkClient: public TrunkLink {
   PacketBuffer trunk_read_buffer_;
   boost::asio::ip::udp::endpoint trunk_read_point_;
 
-  std::mt19937 generator_;
-
   /*! Отправить оповещение о новом коннекте на сторону сервера
   \param cnt идентификатор коннекта
   \param point идентификатор внешней точки кодключения
@@ -410,8 +419,8 @@ class TrunkServer: public TrunkLink {
  public:
   TrunkServer(boost::asio::io_context& ctx,
       const std::vector<std::vector<boost::asio::ip::udp::endpoint>>& trpoints,
-      std::function<std::shared_ptr<OutLink>(PointID)> link_fabric,
-      const Settings& cfg);
+      std::function<std::shared_ptr<OutLink>(PointID, ConnectID)> link_fabric,
+      const Settings& cfg, Tracer* tracer);
   virtual ~TrunkServer();
 
   /*! Получить статистику по работе приложения */
@@ -461,7 +470,7 @@ class TrunkServer: public TrunkLink {
   std::vector<ConnectInfo> clients_link_;
   std::mutex clients_link_lock_;
 
-  std::function<std::shared_ptr<OutLink>(PointID)> link_fabric_;
+  std::function<std::shared_ptr<OutLink>(PointID, ConnectID)> link_fabric_;
 
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();

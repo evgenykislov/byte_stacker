@@ -20,6 +20,7 @@ set(SOURCE_FILES
   "../common/outlink.cpp"
   "../common/parser.cpp"
   "../common/settings.cpp"
+  "../common/tracer.cpp"
   "../common/trunklink.cpp"
 )
 
@@ -30,6 +31,7 @@ set(HEADER_FILES
   "../common/parser.h"
   "../common/settings.h"
   "../common/trace.h"
+  "../common/tracer.h"
   "../common/trunklink.h"
 )
 
@@ -46,6 +48,8 @@ include_directories(${PROJECT_NAME} "../common")
 if(MSVC)
   # Отключение предупреждений о небезопасных функциях. Microsoft-специфично
   target_compile_definitions(${PROJECT_NAME} PRIVATE -D_CRT_SECURE_NO_WARNINGS)
+  # Заявим версию Windows: Win7
+  target_compile_definitions(${PROJECT_NAME} PRIVATE -D_WIN32_WINNT=0x0601)
 endif()
 
 if (CONNECT_LOG)

@@ -10,6 +10,7 @@
 #include "parser.h"
 #include "settings.h"
 #include "trace.h"
+#include "tracer.h"
 #include "trunklink.h"
 
 namespace bai = boost::asio::ip;
@@ -83,6 +84,11 @@ int main(int argc, char** argv) {
     return 3;
   }
 
+  std::shared_ptr<Tracer> tracer;
+  if (!cfg.trace_storage_path.empty()) {
+    tracer = std::make_shared<Tracer>(
+        cfg.trace_storage_path, cfg.trace_completed_path);
+  }
 
   try {
     boost::asio::io_context ctx;
@@ -93,20 +99,21 @@ int main(int argc, char** argv) {
 
     TrunkServer trs(
         ctx, trp,
-        [&eps, &ctx, &cfg](PointID point) -> std::shared_ptr<OutLink> {
+        [&eps, &ctx, &cfg, tracer](
+            PointID point, ConnectID cnt) -> std::shared_ptr<OutLink> {
           auto it = eps.find(point);
           if (it == eps.end()) {
             return nullptr;
           }
 
           try {
-            return OutLink::CreateOutLink(
-                ctx, it->second.Address, it->second.Port, cfg);
+            return OutLink::CreateOutLink(cnt, ctx, it->second.Address,
+                it->second.Port, cfg, tracer.get());
           } catch (...) {
           }
           return nullptr;
         },
-        cfg);
+        cfg, tracer.get());
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
