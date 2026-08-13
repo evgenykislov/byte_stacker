@@ -81,6 +81,8 @@ void TrunkLink::RequestUpdate() {
 
     OnCacheResend();
 
+    ClearDataOrphans();
+
     RequestUpdate();
   });
 }
@@ -97,6 +99,14 @@ void TrunkLink::RequestSendQueue() {
 
     RequestSendQueue();
   });
+}
+
+void TrunkLink::ClearDataOrphans() {
+  std::unique_lock lk(out_links_lock_);
+  auto curt = std::chrono::steady_clock::now();
+  auto tail = std::remove_if(data_cache_.begin(), data_cache_.end(),
+      [curt](const DataInfo& info) { return curt > info.deadline; });
+  data_cache_.erase(tail, data_cache_.end());
 }
 
 
@@ -456,9 +466,22 @@ void TrunkLink::ProcessDataToOutlink(
   if (link) {
     out_stream_counter_ += info->DataSize;
     link->SendData(info->PacketIndex, data, info->DataSize);
+  } else {
+    // Сохраним данные в кэше
+    std::unique_lock lk(out_links_lock_);
+    DataInfo d;
+    d.CtxID = cnt;
+    d.PacketID = info->PacketIndex;
+    d.size = info->DataSize;
+    d.data = GetBuffer();
+    if (d.size > 0) {
+      memcpy(d.data.get(), data, d.size);
+    }
+    d.deadline = std::chrono::steady_clock::now() +
+                 std::chrono::milliseconds(kOrphanDataTimeout);
+
+    data_cache_.push_back(d);
   }
-  // else - Нет такого подключения. Уже удалено, закрыто или др.
-  // В общем, ничего не делаем
 }
 
 void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
@@ -541,6 +564,24 @@ void TrunkLink::IntAddOutLinkWOLock(
   out_links_.push_back(info);
   //  trlog("-- Add outlink %s\n", uuids::to_string(cnt).c_str());
   link->Run(this, cnt);
+
+  // Выгребем кэш данных. Вдруг есть недоставленные данные
+  auto curt = std::chrono::steady_clock::now();
+  for (auto it = data_cache_.begin(); it != data_cache_.end(); /* nothing */) {
+    if (it->CtxID != cnt) {
+      if (curt > it->deadline) {
+        // Очень старые данные. Удаляем
+        it = data_cache_.erase(it);
+      } else {
+        // Данные нестарые. И неподходящие. Пропускаем
+        ++it;
+      }
+    } else {
+      // Данные для этого соединения
+      out_stream_counter_ += it->size;
+      link->SendData(it->PacketID, it->data.get(), it->size);
+    }
+  }
 }
 
 std::shared_ptr<OutLink> TrunkLink::GetOutLinkWOLock(uuids::uuid cnt) {
@@ -571,20 +612,19 @@ void TrunkLink::OnCacheResend() {
 
   auto tracer = tracer_;
 
-  auto tail =
-      std::remove_if(packet_data_cache_.begin(), packet_data_cache_.end(),
-          [curt, tracer](PacketDataCache& item) {
-            if (curt > item.Deadline) {
-              if (tracer) {
-                std::stringstream ss;
-                ss << "Remove deadline packet #" << item.info.PacketID;
-                tracer->Message(item.info.CtxID, ss.str());
-              }
+  auto tail = std::remove_if(packet_data_cache_.begin(),
+      packet_data_cache_.end(), [curt, tracer](PacketDataCache& item) {
+        if (curt > item.Deadline) {
+          if (tracer) {
+            std::stringstream ss;
+            ss << "Remove deadline packet #" << item.info.PacketID;
+            tracer->Message(item.info.CtxID, ss.str());
+          }
 
-              return true;
-            }
-            return false;
-          });
+          return true;
+        }
+        return false;
+      });
   if (tail != packet_data_cache_.end()) {
     deadp = packet_data_cache_.end() - tail;
     packet_data_cache_.erase(tail, packet_data_cache_.end());
@@ -774,7 +814,8 @@ int TrunkClient::GetAvailableBuffer(ConnectID ctx) {
 void TrunkClient::SendPacket(PacketInfo pkt) {
   // На клиентской части всего один транковый сокет, поэтому всё отправляем на
   // 0-ой индекс
-  SendPacket(0, points_.front(), pkt); // TODO Избавиться от ещё одной виртуализации
+  SendPacket(
+      0, points_.front(), pkt);  // TODO Избавиться от ещё одной виртуализации
 }
 
 
@@ -966,7 +1007,8 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
     return;
   }
 
-  SendPacket(info.socket_index, info.client, pkt); // TODO Убрать линюю виртуализацию
+  SendPacket(
+      info.socket_index, info.client, pkt);  // TODO Убрать лишнюю виртуализацию
 }
 
 
