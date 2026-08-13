@@ -580,6 +580,7 @@ void TrunkLink::IntAddOutLinkWOLock(
       // Данные для этого соединения
       out_stream_counter_ += it->size;
       link->SendData(it->PacketID, it->data.get(), it->size);
+      it = data_cache_.erase(it);
     }
   }
 }
