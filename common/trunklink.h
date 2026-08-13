@@ -13,6 +13,8 @@
 
 enum TrunkCommand : uint32_t {
   kTrunkCommandCreateConnect = 1,
+  /*! Закрытие соединения. Обязательно с номером, чтобы дошли все пакеты данных.
+  Команда посылается как данные, и подтверждается как данные */
   kTrunkCommandReleaseConnect = 2,
   kTrunkCommandAckCreateConnect = 3,
   kTrunkCommandDataOut =
@@ -166,11 +168,17 @@ class TrunkLink {
     PacketIDType PacketID;
     std::shared_ptr<PacketBuffer> data;
     uint32_t size;
-
-    //! Метка времени, после которой пакет уже удалять - недождались
+    //! Метка времени, после которой пакет уже можно удалять - недождались
     std::chrono::steady_clock::time_point deadline;
   };
 
+  /*! Информация о пришедших данных для закрытия соединения */
+  struct ReleaseInfo {
+    ConnectID CtxID;
+    PacketIDType PacketID;
+    //! Метка времени, после которой данные уже можно удалять - недождались
+    std::chrono::steady_clock::time_point deadline;
+  };
 
   /*! Описание одного внешнего коннекта (tcp-соединения). У коннекта
   обязательно есть link */
@@ -192,15 +200,27 @@ class TrunkLink {
   Массив закрывается out_links_lock_ */
   std::deque<DataInfo> data_cache_;
 
+  /*! Массив с информацией о закрытии соединений, для которых ещё или уже нет
+  соединения. Массив закрывается out_links_lock_ */
+  std::deque<ReleaseInfo> release_cache_;
+
+
   std::mutex out_links_lock_;
 
   const Settings& cfg_settings_;
 
-  // TODO Descr
+  /*! Указатель на класс трейсера: записывает события по соединению в отдельный
+  файл. Указатель может быть nullptr */
   Tracer* tracer_;
 
-  // TODO parameter client - remove ???
-  void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
+  /*! Обработка пакета с данными полученными из транка. Никакая предварительная
+  проверка валидности не проводилась. Параметры socket_index и client
+  используются для отправки ответа даже для несуществующего или уже удалённого
+  соединения \param socket_index - индекс сокета для транковой связи. 0 в случае
+  одного сокета \param client адрес возврата клиента \param data блок данных
+  \param data_size размер данных */
+  void ProcessTrunkData(size_t socket_index,
+      boost::asio::ip::udp::endpoint client, const void* data,
       size_t data_size);
 
   PacketInfo FormPacket(
@@ -273,6 +293,10 @@ class TrunkLink {
   /*! Получить статистику по работе приложения */
   StatInfo GetStat();
 
+  /*! Хелпер на вывод сообщения по соединению в трейсер */
+  void TracerMessage(uuids::uuid id, const std::string& msg);
+
+
  private:
   TrunkLink() = delete;
   TrunkLink(const TrunkLink&) = delete;
@@ -304,6 +328,9 @@ class TrunkLink {
   static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 
   bool server_side_;
+  /*! Символы для обозначения пакетов на своей стороне и на другой стороне
+  Используются для удобства разбора логов, зависят от server_side_ */
+  char my_packet_symbol_, other_packet_symbol_;
 
   // TODO Переделать в deque
   // TODO Descr
@@ -373,6 +400,7 @@ class TrunkLink {
 
   /*! Отправить подтверждение на приём пакета данных. Подтверждение может
   отсылаться даже при уже удалённом соединении, чтобы не поддерживать спам
+  Прим.: такое же подтверждение посылается на закрытие соединения
   \param cnt идентификатор соединения (которое может отсутствовать)
   \param packet_id идентификатор пакета, который подтверждается
   \param socket_index индекс сокета для отправки
