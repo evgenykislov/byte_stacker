@@ -12,8 +12,11 @@ ProcessorPtr CreateProcessor(boost::asio::io_context& ctx,
     return std::make_shared<ProcessorSkip>(next, value);
   } else if (prefix == "--delay=") {
     return std::make_shared<ProcessorDelay>(ctx, next, value);
+  } else if (prefix == "--skip_connection=") {
+    return std::make_shared<ProcessorSkipConnection>(next, value);
+  } else {
+    throw std::runtime_error("unknown processor");
   }
-
 
   return ProcessorPtr();
 }

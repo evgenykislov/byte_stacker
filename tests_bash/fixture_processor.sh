@@ -26,7 +26,7 @@ function setup() {
   PROC_IN=$!
   ${BIN_PATH}/byte_stacker_out --external1=127.0.0.2:50001 --trunk=127.0.0.2:20001 &
   PROC_OUT=$!
-  ${BIN_PATH}/udp_processor --receive=127.0.0.2:20000 --transmit=127.0.0.2:20001 &
+  ${BIN_PATH}/udp_processor --receive=127.0.0.2:20000 --transmit=127.0.0.2:20001 ${PROCESSORS} &
   PROC_PROCESSOR=$!
 
   sleep 0.5
@@ -63,6 +63,20 @@ function teardown() {
   fi
   if [[ ${PROC_PROCESSOR} != -1 ]]; then
     kill ${PROC_PROCESSOR}
+  fi
+
+  sleep 0.5
+
+  if ps -p ${PROC_IN} > /dev/null 2>&1 ; then
+    echo "ERROR: in-process hasn't stopped"
+  fi
+
+  if ps -p ${PROC_OUT} > /dev/null 2>&1 ; then
+    echo "ERROR: out-process hasn't stopped"
+  fi
+
+  if ps -p ${PROC_PROCESSOR} > /dev/null 2>&1 ; then
+    echo "ERROR: processor-process hasn't stopped"
   fi
 }
 

@@ -6,6 +6,7 @@
 
 using PointID = unsigned int;
 using ConnectID = uuids::uuid;
+using PacketIDType = uint32_t;
 
 
 #endif  // DATA_H

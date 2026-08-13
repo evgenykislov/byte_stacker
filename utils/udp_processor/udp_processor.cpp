@@ -20,7 +20,8 @@ const size_t kPoolSize = 4;
 const size_t kUndefinedIndex = size_t(-1);
 const size_t kReadBufferSize = 2000;
 
-const std::string kProcessorsTypes[] = {"--skip=", "--delay="};
+const std::string kProcessorsTypes[] = {
+    "--skip=", "--delay=", "--skip_connection="};
 
 
 struct ProcInfo {
@@ -101,10 +102,13 @@ void PrintHelp() {
   std::cout << "Test utility with udp packet processing" << std::endl;
   std::cout << "Usage:" << std::endl;
   std::cout << "  udp_processing --receive=ip:port --transmit=ip:port "
-               "[--delay=value_ms] [--skip=n]"
+               "[--delay=value_ms] [--skip=n] [--skip_connection=n]"
             << std::endl;
   std::cout << "    --delay add delay to each packet" << std::endl;
   std::cout << "    --skip skip each n-th packet" << std::endl;
+  std::cout
+      << "    --skip_connection skip first n packets for connection create"
+      << std::endl;
 }
 
 

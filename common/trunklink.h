@@ -13,12 +13,16 @@
 
 enum TrunkCommand : uint32_t {
   kTrunkCommandCreateConnect = 1,
+  /*! Закрытие соединения. Обязательно с номером, чтобы дошли все пакеты данных.
+  Команда посылается как данные, и подтверждается как данные */
   kTrunkCommandReleaseConnect = 2,
   kTrunkCommandAckCreateConnect = 3,
   kTrunkCommandDataOut =
       11,  // Пакет данных с локальной точки на внешний сервер
   kTrunkCommandDataIn = 12,
+  // Подтверждение получения пакета данных серверной стороной
   kTrunkCommandAckDataOut = 21,
+  // Подтверждение получения пакета данных клиентской стороной
   kTrunkCommandAckDataIn = 22,
   kTrunkCommandLive =
       31,  //!< Live-пакет для поддержания актуальности соединения
@@ -58,6 +62,10 @@ const double kDefaultUdpTrafficSpeed = 4.0;
 const size_t kUdpPacketOverhead =
     40;  //!< Дополнительное место, которое занимает пакет в буфере на отправку.
          //!< Как минимум 20 байт на заголовки, ip-адреса и др.
+
+/*! Время хранения пакета с данными без существующего соединения (пришёл раньше
+соединения или оно уже удалено). В миллисекундах */
+const int kOrphanDataTimeout = 5000;
 
 /*! Возвращаемое значение свободного места в udp буфере, если буфер недоступен
  */
@@ -145,6 +153,7 @@ class TrunkLink {
   static const size_t kPacketBufferSize = 1000;
   using PacketBuffer = uint8_t[kPacketBufferSize];
 
+  /*! Информация о целом пакете: с заголовком и т.д. */
   struct PacketInfo {
     ConnectID CtxID;
     uint32_t PacketID;  // Номер пакета или kEmptyPacketID
@@ -152,6 +161,27 @@ class TrunkLink {
     uint32_t PacketSize;
   };
 
+  /*! Информация о пришедших данных для соединения (только разобранные данные)
+   */
+  struct DataInfo {
+    ConnectID CtxID;
+    PacketIDType PacketID;
+    std::shared_ptr<PacketBuffer> data;
+    uint32_t size;
+    //! Метка времени, после которой пакет уже можно удалять - недождались
+    std::chrono::steady_clock::time_point deadline;
+  };
+
+  /*! Информация о пришедших данных для закрытия соединения */
+  struct ReleaseInfo {
+    ConnectID CtxID;
+    PacketIDType PacketID;
+    //! Метка времени, после которой данные уже можно удалять - недождались
+    std::chrono::steady_clock::time_point deadline;
+  };
+
+  /*! Описание одного внешнего коннекта (tcp-соединения). У коннекта
+  обязательно есть link */
   struct OutLinkInfo {
     uuids::uuid connect_id;
     std::shared_ptr<OutLink> link;
@@ -165,15 +195,32 @@ class TrunkLink {
   // TODO
   // Массив закрывается out_links_lock_, которая заявлена как protected
   std::vector<OutLinkInfo> out_links_;
+
+  /*! Массив с пришедшими данными, для которых ещё или уже нет соединения.
+  Массив закрывается out_links_lock_ */
+  std::deque<DataInfo> data_cache_;
+
+  /*! Массив с информацией о закрытии соединений, для которых ещё или уже нет
+  соединения. Массив закрывается out_links_lock_ */
+  std::deque<ReleaseInfo> release_cache_;
+
+
   std::mutex out_links_lock_;
 
   const Settings& cfg_settings_;
 
-  // TODO Descr
+  /*! Указатель на класс трейсера: записывает события по соединению в отдельный
+  файл. Указатель может быть nullptr */
   Tracer* tracer_;
 
-  // TODO parameter client - remove ???
-  void ProcessTrunkData(boost::asio::ip::udp::endpoint client, const void* data,
+  /*! Обработка пакета с данными полученными из транка. Никакая предварительная
+  проверка валидности не проводилась. Параметры socket_index и client
+  используются для отправки ответа даже для несуществующего или уже удалённого
+  соединения \param socket_index - индекс сокета для транковой связи. 0 в случае
+  одного сокета \param client адрес возврата клиента \param data блок данных
+  \param data_size размер данных */
+  void ProcessTrunkData(size_t socket_index,
+      boost::asio::ip::udp::endpoint client, const void* data,
       size_t data_size);
 
   PacketInfo FormPacket(
@@ -190,6 +237,14 @@ class TrunkLink {
   переотправка должна реализовываться раньше/в другом месте
   \param pkt отправляемый пакет */
   virtual void SendPacket(PacketInfo pkt) = 0;
+
+  /*! Отправить пакет по транку через заданный сокет (по индексу) и целевай
+  адрес. Ошибки не контролируются, переотправки нет \param socket_index индекс
+  сокета в транковом пуле. Для случая одного сокета (клиентсткая сторона)
+  использовать 0 \param target целевой адрес/порт, куда отправлять пакет \param
+  pkt пакет с данными (упакованы сами данные, длина и т.д.) */
+  virtual void SendPacket(size_t socket_index,
+      boost::asio::ip::udp::endpoint target, PacketInfo pkt) = 0;
 
   // Обработчики отдельных команд
   virtual void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info){};
@@ -226,9 +281,10 @@ class TrunkLink {
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();
 
-  /* Пепосылка кэша пакетов. При перепосылке используется таймер, чтобы не
+  /* Перепосылка кэша пакетов. При перепосылке используется таймер, чтобы не
   устраивать шторм пакетов */
   virtual void OnCacheResend();
+
 
   /*! Послать по транку информацию о разрыве соединения
   \param cnt идентификатор коннекта */
@@ -236,6 +292,10 @@ class TrunkLink {
 
   /*! Получить статистику по работе приложения */
   StatInfo GetStat();
+
+  /*! Хелпер на вывод сообщения по соединению в трейсер */
+  void TracerMessage(uuids::uuid id, const std::string& msg);
+
 
  private:
   TrunkLink() = delete;
@@ -268,6 +328,9 @@ class TrunkLink {
   static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 
   bool server_side_;
+  /*! Символы для обозначения пакетов на своей стороне и на другой стороне
+  Используются для удобства разбора логов, зависят от server_side_ */
+  char my_packet_symbol_, other_packet_symbol_;
 
   // TODO Переделать в deque
   // TODO Descr
@@ -323,6 +386,9 @@ class TrunkLink {
   Вызываться должно очень часто. Порядка 100 раз в секунду */
   void RequestSendQueue();
 
+  /*! Очистим кэш данных без соединений */
+  void ClearDataOrphans();
+
 
   // TODO descr
   void SendLivePacket();
@@ -331,6 +397,16 @@ class TrunkLink {
   остановил все операции и готов к удалению
   \param cnt идентификатор коннекта */
   void RemoveOutLink(uuids::uuid cnt);
+
+  /*! Отправить подтверждение на приём пакета данных. Подтверждение может
+  отсылаться даже при уже удалённом соединении, чтобы не поддерживать спам
+  Прим.: такое же подтверждение посылается на закрытие соединения
+  \param cnt идентификатор соединения (которое может отсутствовать)
+  \param packet_id идентификатор пакета, который подтверждается
+  \param socket_index индекс сокета для отправки
+  \param target адрес/порт, куда отправлять */
+  void SendDataAck(ConnectID cnt, uint32_t packet_id, size_t socket_index,
+      boost::asio::ip::udp::endpoint target);
 };
 
 
@@ -407,6 +483,9 @@ class TrunkClient: public TrunkLink {
   int GetAvailableBuffer(ConnectID ctx) override;
 
   void SendPacket(PacketInfo pkt) override;
+  void SendPacket(size_t socket_index, boost::asio::ip::udp::endpoint target,
+      PacketInfo pkt) override;
+
 
   void ProcessAckConnectData(
       uuids::uuid cnt, const PacketHeader* info) override;
@@ -460,7 +539,7 @@ class TrunkServer: public TrunkLink {
   std::mutex
       buffer_lock_;  //!< Блокировка для пересчёта свободного размера буфера
 
-  /*! Информация для связи с клиеннтами по транковой связи: какой сокет
+  /*! Информация для связи с клиентами по транковой связи: какой сокет
   использовать и конечную точку */
   struct ConnectInfo {
     uuids::uuid connect;
@@ -490,6 +569,9 @@ class TrunkServer: public TrunkLink {
   int GetAvailableBuffer(ConnectID ctx) override;
 
   void SendPacket(PacketInfo pkt) override;
+  void SendPacket(size_t socket_index, boost::asio::ip::udp::endpoint target,
+      PacketInfo pkt) override;
+
 
   // TODO Descr
   bool GetPacketConnectID(const void* data, size_t data_size, uuids::uuid& cnt);
