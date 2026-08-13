@@ -67,15 +67,15 @@ function teardown() {
 
   sleep 0.5
 
-  if ! ps -p ${PROC_IN} > /dev/null 2>&1 ; then
+  if ps -p ${PROC_IN} > /dev/null 2>&1 ; then
     echo "ERROR: in-process hasn't stopped"
   fi
 
-  if ! ps -p ${PROC_OUT} > /dev/null 2>&1 ; then
+  if ps -p ${PROC_OUT} > /dev/null 2>&1 ; then
     echo "ERROR: out-process hasn't stopped"
   fi
 
-  if ! ps -p ${PROC_PROCESSOR} > /dev/null 2>&1 ; then
+  if ps -p ${PROC_PROCESSOR} > /dev/null 2>&1 ; then
     echo "ERROR: processor-process hasn't stopped"
   fi
 }
