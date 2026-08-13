@@ -31,6 +31,8 @@ void PrintHelp() {
 
 
 int main(int argc, char** argv) {
+  int result = 0;
+
   if (argc <= 1) {
     PrintHelp();
     return 1;
@@ -165,7 +167,8 @@ int main(int argc, char** argv) {
     }
   } catch (std::exception& err) {
     std::printf("Exception: %s\n", err.what());
+    result = 1;
   }
 
-  return 0;
+  return result;
 }
