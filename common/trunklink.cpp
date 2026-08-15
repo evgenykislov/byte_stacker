@@ -175,6 +175,64 @@ void TrunkLink::SendLivePacket() {
   }
 }
 
+bool TrunkLink::AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link) {
+  std::lock_guard lk(out_links_lock_);
+
+  auto exist_link = GetOutLinkWOLock(cnt);
+  if (exist_link) {
+    // Такая внешняя связь уже существует
+    // Странно, но теоретически возможно
+    // Ничего не делаем, выходим, забываем про эту связь
+    std::cerr << "??: uuid generator creates double: " << uuids::to_string(cnt)
+              << std::endl;
+    return false;
+  }
+
+  OutLinkInfo info;
+  info.connect_id = cnt;
+  info.link = link;
+  info.next_index_to_trunk = 0;
+  info.deadlink_timeout_ = std::chrono::steady_clock::now() +
+                           std::chrono::milliseconds(kDeadOutLinkTimeout);
+  out_links_.push_back(info);
+  return true;
+}
+
+void TrunkLink::RunOutLink(uuids::uuid cnt) {
+  auto link = GetOutLink(cnt);
+  assert(link);
+  if (!link) {
+    return;
+  }
+
+  link->Run(this, cnt);
+
+  // Выгребем кэш данных и закрытий соединений. Вдруг есть недоставленные данные
+  for (auto it = data_cache_.begin(); it != data_cache_.end(); /* nothing */) {
+    if (it->CtxID != cnt) {
+      // Данные неподходящие. Пропускаем
+      ++it;
+    } else {
+      // Данные для этого соединения
+      out_stream_counter_ += it->size;
+      link->SendData(it->PacketID, it->data.get(), it->size);
+      it = data_cache_.erase(it);
+    }
+  }
+
+  for (auto it = release_cache_.begin(); it != release_cache_.end();
+      /* nothing */) {
+    if (it->CtxID != cnt) {
+      // Закрытие неподходящее. Пропускаем
+      ++it;
+    } else {
+      // Закрытие для этого соединения
+      link->Stop(it->PacketID, OutLink::kStopReleaseCommand);
+      it = release_cache_.erase(it);
+    }
+  }
+}
+
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
   if (tracer_) {
@@ -372,7 +430,8 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
         // Неполный формат
         return;
       }
-      ProcessConnectData(cnt, static_cast<const PacketConnect*>(hdr));
+      ProcessConnectData(
+          cnt, static_cast<const PacketConnect*>(hdr), socket_index, client);
       break;
     case kTrunkCommandAckCreateConnect:
       ProcessAckConnectData(cnt, hdr);
@@ -555,44 +614,6 @@ void TrunkLink::ProcessLive(uuids::uuid cnt, uint64_t written) {
   }
 }
 
-
-void TrunkLink::IntAddOutLinkWOLock(
-    uuids::uuid cnt, std::shared_ptr<OutLink> link) {
-  OutLinkInfo info;
-  info.connect_id = cnt;
-  info.link = link;
-  info.next_index_to_trunk = 0;
-  info.deadlink_timeout_ = std::chrono::steady_clock::now() +
-                           std::chrono::milliseconds(kDeadOutLinkTimeout);
-  out_links_.push_back(info);
-  //  trlog("-- Add outlink %s\n", uuids::to_string(cnt).c_str());
-  link->Run(this, cnt);
-
-  // Выгребем кэш данных и закрытий соединений. Вдруг есть недоставленные данные
-  for (auto it = data_cache_.begin(); it != data_cache_.end(); /* nothing */) {
-    if (it->CtxID != cnt) {
-      // Данные неподходящие. Пропускаем
-      ++it;
-    } else {
-      // Данные для этого соединения
-      out_stream_counter_ += it->size;
-      link->SendData(it->PacketID, it->data.get(), it->size);
-      it = data_cache_.erase(it);
-    }
-  }
-
-  for (auto it = release_cache_.begin(); it != release_cache_.end();
-      /* nothing */) {
-    if (it->CtxID != cnt) {
-      // Закрытие неподходящее. Пропускаем
-      ++it;
-    } else {
-      // Закрытие для этого соединения
-      link->Stop(it->PacketID, OutLink::kStopReleaseCommand);
-      it = release_cache_.erase(it);
-    }
-  }
-}
 
 std::shared_ptr<OutLink> TrunkLink::GetOutLinkWOLock(uuids::uuid cnt) {
   for (auto& item : out_links_) {
@@ -801,21 +822,12 @@ void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
   assert(link);
 
   auto cnt = link->GetConnectID();
-
-  std::unique_lock lk(out_links_lock_);
-  auto exist_link = GetOutLinkWOLock(cnt);
-  if (exist_link) {
-    // Такая внешняя связь уже существует
-    // Странно, но теоретически возможно
-    // Ничего не делаем, выходим, забываем про эту связь
-    std::cerr << "??: uuid generator creates double: " << uuids::to_string(cnt)
-              << std::endl;
+  if (!AddOutLink(cnt, link)) {
     return;
   }
-  IntAddOutLinkWOLock(cnt, link);
-  lk.unlock();
 
   SendConnectInformation(cnt, point, kResendTimeout);
+  RunOutLink(cnt);
 }
 
 
@@ -961,10 +973,22 @@ void TrunkServer::RequestReadingTrunk(size_t index) {
 }
 
 
-void TrunkServer::ProcessConnectData(
-    uuids::uuid cnt, const PacketConnect* info) {
+void TrunkServer::ProcessConnectData(uuids::uuid cnt, const PacketConnect* info,
+    size_t socket_index, boost::asio::ip::udp::endpoint target) {
   if (tracer_) {
     tracer_->CreateTrace(cnt);
+  }
+
+  // Создадим внешний коннект
+  auto ol = link_fabric_(info->PointID, cnt);
+  if (!ol) {
+    // TODO ERROR Can't create link
+    std::cerr << "ERROR: Can't create outlink from fabric" << std::endl;
+    return;
+  }
+
+  if (AddOutLink(cnt, ol)) {
+    return;
   }
 
   // Отправим подтверждение на получение пакета
@@ -978,24 +1002,9 @@ void TrunkServer::ProcessConnectData(
   pi.PacketID = kEmptyPacketID;
   pi.PacketData = buf;
   pi.PacketSize = sizeof(PacketHeader);
-  SendPacket(pi);
+  SendPacket(socket_index, target, pi);
 
-  std::unique_lock lk(out_links_lock_);
-  auto exist_link = GetOutLinkWOLock(cnt);
-  if (exist_link) {
-    // Такая внешняя связь уже существует
-    // Такое легко может быть, когда пришёл дубликат сообщения о новом коннекте
-    // Ничего не создаём, выходим
-    return;
-  }
-  // Создадим внешний коннект
-  auto ol = link_fabric_(info->PointID, cnt);
-  if (!ol) {
-    // TODO ERROR Can't create link
-    return;
-  }
-  IntAddOutLinkWOLock(cnt, ol);
-  lk.unlock();
+  RunOutLink(cnt);
 }
 
 
