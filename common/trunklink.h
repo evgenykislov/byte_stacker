@@ -213,6 +213,10 @@ class TrunkLink {
   файл. Указатель может быть nullptr */
   Tracer* tracer_;
 
+  /*! Символы для обозначения пакетов на своей стороне и на другой стороне
+  Используются для удобства разбора логов, зависят от server_side_ */
+  char my_packet_symbol_, other_packet_symbol_;
+
   /*! Обработка пакета с данными полученными из транка. Никакая предварительная
   проверка валидности не проводилась. Параметры socket_index и client
   используются для отправки ответа даже для несуществующего или уже удалённого
@@ -337,9 +341,6 @@ class TrunkLink {
   static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 
   bool server_side_;
-  /*! Символы для обозначения пакетов на своей стороне и на другой стороне
-  Используются для удобства разбора логов, зависят от server_side_ */
-  char my_packet_symbol_, other_packet_symbol_;
 
   // TODO Переделать в deque
   // TODO Descr

@@ -235,10 +235,6 @@ void TrunkLink::RunOutLink(uuids::uuid cnt) {
 
 
 void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
-  if (tracer_) {
-    tracer_->Message(cnt, "-> trunk");
-  }
-
   in_stream_counter_ += data_size;
   SendCmdData(cnt, data, data_size,
       server_side_ ? kTrunkCommandDataIn : kTrunkCommandDataOut);
@@ -283,16 +279,19 @@ void TrunkLink::SendCmdData(
   info.PacketID = pkt_index;
   info.PacketData = buf;
   info.PacketSize = static_cast<uint32_t>(sizeof(PacketData) + data_size);
-  if (tracer_) {
-    std::stringstream ss;
-    ss << "Form packet #" << pkt_index << " to trunk";
-    tracer_->Message(cnt, ss.str());
-  }
 
   // Отправим пакет в очередь (дожидаться свободного буфера)
   std::unique_lock lks(packet_send_queue_lock_);
   packet_send_queue_.push_back(info);
   lks.unlock();
+
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "  Form packet " << my_packet_symbol_ << pkt_index
+       << " and store to pre-send queue";
+    tracer_->Message(cnt, ss.str());
+  }
+
   SendPacketQueue();
 }
 
@@ -318,6 +317,13 @@ void TrunkLink::SendPacketQueue() {
     std::unique_lock<std::mutex> lk(packet_data_cache_lock_);
     packet_data_cache_.push_back(pc);
     lk.unlock();
+
+    if (tracer_) {
+      std::stringstream ss;
+      ss << "    Lay packet " << my_packet_symbol_ << info.PacketID
+         << " to send cache";
+      tracer_->Message(info.CtxID, ss.str());
+    }
 
     SendPacket(info);  // TODO сделать проверку на размер буфера
 
@@ -874,10 +880,25 @@ void TrunkClient::SendPacket(PacketInfo pkt) {
 
 void TrunkClient::SendPacket(size_t socket_index,
     boost::asio::ip::udp::endpoint target, PacketInfo pkt) {
-  auto pd = pkt.PacketData;
-  trunk_socket_.async_send_to(boost::asio::buffer(pd.get(), pkt.PacketSize),
-      target,
-      [pd](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "        packet " << my_packet_symbol_ << pkt.PacketID
+       << " sent to trunk";
+    tracer_->Message(pkt.CtxID, ss.str());
+  }
+
+  trunk_socket_.async_send_to(
+      boost::asio::buffer(pkt.PacketData.get(), pkt.PacketSize), target,
+      [pkt, this](boost::system::error_code error, std::size_t /*bytes_sent*/) {
+        if (error) {
+          if (tracer_) {
+            std::stringstream ss;
+            ss << "          !! packet " << my_packet_symbol_ << pkt.PacketID
+               << " hasn't sent with error: " << error.message();
+            tracer_->Message(pkt.CtxID, ss.str());
+          }
+        }
+      });
 
   // Пересчитаем свободный буфер
   std::unique_lock lk(trunk_buffer_lock_);
@@ -1078,11 +1099,26 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
 
 void TrunkServer::SendPacket(size_t socket_index,
     boost::asio::ip::udp::endpoint target, PacketInfo pkt) {
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "        packet " << my_packet_symbol_ << pkt.PacketID
+       << " sent to trunk";
+    tracer_->Message(pkt.CtxID, ss.str());
+  }
+
   auto& ts = trunk_sockets_[socket_index];
-  auto buf = pkt.PacketData;
-  ts.socket.async_send_to(boost::asio::buffer(buf.get(), pkt.PacketSize),
-      target,
-      [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+  ts.socket.async_send_to(
+      boost::asio::buffer(pkt.PacketData.get(), pkt.PacketSize), target,
+      [pkt, this](boost::system::error_code error, std::size_t /*bytes_sent*/) {
+        if (error) {
+          if (tracer_) {
+            std::stringstream ss;
+            ss << "          !! packet " << my_packet_symbol_ << pkt.PacketID
+               << " hasn't sent with error: " << error.message();
+            tracer_->Message(pkt.CtxID, ss.str());
+          }
+        }
+      });
 
   // Пересчитаем свободный буфер
   std::unique_lock lk(buffer_lock_);
