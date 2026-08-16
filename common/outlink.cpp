@@ -505,7 +505,7 @@ void OutLink::Run(TrunkLink* hoster,
   selfid_str_ = uuids::to_string(cnt);
 
   if (tracer_) {
-    tracer_->Message(connect_id_, "++ Running");
+    tracer_->Message(connect_id_, "Running outlink");
   }
 
   if (socket_.is_open()) {

@@ -175,12 +175,66 @@ void TrunkLink::SendLivePacket() {
   }
 }
 
+bool TrunkLink::AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link) {
+  std::lock_guard lk(out_links_lock_);
 
-void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
-  if (tracer_) {
-    tracer_->Message(cnt, "-> trunk");
+  auto exist_link = GetOutLinkWOLock(cnt);
+  if (exist_link) {
+    // Такая внешняя связь уже существует
+    // Странно, но теоретически возможно
+    // Ничего не делаем, выходим, забываем про эту связь
+    std::cerr << "??: uuid generator creates double: " << uuids::to_string(cnt)
+              << std::endl;
+    return false;
   }
 
+  OutLinkInfo info;
+  info.connect_id = cnt;
+  info.link = link;
+  info.next_index_to_trunk = 0;
+  info.deadlink_timeout_ = std::chrono::steady_clock::now() +
+                           std::chrono::milliseconds(kDeadOutLinkTimeout);
+  out_links_.push_back(info);
+  return true;
+}
+
+void TrunkLink::RunOutLink(uuids::uuid cnt) {
+  auto link = GetOutLink(cnt);
+  assert(link);
+  if (!link) {
+    return;
+  }
+
+  link->Run(this, cnt);
+
+  // Выгребем кэш данных и закрытий соединений. Вдруг есть недоставленные данные
+  for (auto it = data_cache_.begin(); it != data_cache_.end(); /* nothing */) {
+    if (it->CtxID != cnt) {
+      // Данные неподходящие. Пропускаем
+      ++it;
+    } else {
+      // Данные для этого соединения
+      out_stream_counter_ += it->size;
+      link->SendData(it->PacketID, it->data.get(), it->size);
+      it = data_cache_.erase(it);
+    }
+  }
+
+  for (auto it = release_cache_.begin(); it != release_cache_.end();
+      /* nothing */) {
+    if (it->CtxID != cnt) {
+      // Закрытие неподходящее. Пропускаем
+      ++it;
+    } else {
+      // Закрытие для этого соединения
+      link->Stop(it->PacketID, OutLink::kStopReleaseCommand);
+      it = release_cache_.erase(it);
+    }
+  }
+}
+
+
+void TrunkLink::SendData(ConnectID cnt, const void* data, size_t data_size) {
   in_stream_counter_ += data_size;
   SendCmdData(cnt, data, data_size,
       server_side_ ? kTrunkCommandDataIn : kTrunkCommandDataOut);
@@ -225,16 +279,19 @@ void TrunkLink::SendCmdData(
   info.PacketID = pkt_index;
   info.PacketData = buf;
   info.PacketSize = static_cast<uint32_t>(sizeof(PacketData) + data_size);
-  if (tracer_) {
-    std::stringstream ss;
-    ss << "Form packet #" << pkt_index << " to trunk";
-    tracer_->Message(cnt, ss.str());
-  }
 
   // Отправим пакет в очередь (дожидаться свободного буфера)
   std::unique_lock lks(packet_send_queue_lock_);
   packet_send_queue_.push_back(info);
   lks.unlock();
+
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "  Form packet " << my_packet_symbol_ << pkt_index
+       << " and store to pre-send queue";
+    tracer_->Message(cnt, ss.str());
+  }
+
   SendPacketQueue();
 }
 
@@ -260,6 +317,13 @@ void TrunkLink::SendPacketQueue() {
     std::unique_lock<std::mutex> lk(packet_data_cache_lock_);
     packet_data_cache_.push_back(pc);
     lk.unlock();
+
+    if (tracer_) {
+      std::stringstream ss;
+      ss << "    Lay packet " << my_packet_symbol_ << info.PacketID
+         << " to send cache";
+      tracer_->Message(info.CtxID, ss.str());
+    }
 
     SendPacket(info);  // TODO сделать проверку на размер буфера
 
@@ -372,7 +436,8 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
         // Неполный формат
         return;
       }
-      ProcessConnectData(cnt, static_cast<const PacketConnect*>(hdr));
+      ProcessConnectData(
+          cnt, static_cast<const PacketConnect*>(hdr), socket_index, client);
       break;
     case kTrunkCommandAckCreateConnect:
       ProcessAckConnectData(cnt, hdr);
@@ -555,44 +620,6 @@ void TrunkLink::ProcessLive(uuids::uuid cnt, uint64_t written) {
   }
 }
 
-
-void TrunkLink::IntAddOutLinkWOLock(
-    uuids::uuid cnt, std::shared_ptr<OutLink> link) {
-  OutLinkInfo info;
-  info.connect_id = cnt;
-  info.link = link;
-  info.next_index_to_trunk = 0;
-  info.deadlink_timeout_ = std::chrono::steady_clock::now() +
-                           std::chrono::milliseconds(kDeadOutLinkTimeout);
-  out_links_.push_back(info);
-  //  trlog("-- Add outlink %s\n", uuids::to_string(cnt).c_str());
-  link->Run(this, cnt);
-
-  // Выгребем кэш данных и закрытий соединений. Вдруг есть недоставленные данные
-  for (auto it = data_cache_.begin(); it != data_cache_.end(); /* nothing */) {
-    if (it->CtxID != cnt) {
-      // Данные неподходящие. Пропускаем
-      ++it;
-    } else {
-      // Данные для этого соединения
-      out_stream_counter_ += it->size;
-      link->SendData(it->PacketID, it->data.get(), it->size);
-      it = data_cache_.erase(it);
-    }
-  }
-
-  for (auto it = release_cache_.begin(); it != release_cache_.end();
-      /* nothing */) {
-    if (it->CtxID != cnt) {
-      // Закрытие неподходящее. Пропускаем
-      ++it;
-    } else {
-      // Закрытие для этого соединения
-      link->Stop(it->PacketID, OutLink::kStopReleaseCommand);
-      it = release_cache_.erase(it);
-    }
-  }
-}
 
 std::shared_ptr<OutLink> TrunkLink::GetOutLinkWOLock(uuids::uuid cnt) {
   for (auto& item : out_links_) {
@@ -801,21 +828,12 @@ void TrunkClient::AddConnect(PointID point, std::shared_ptr<OutLink> link) {
   assert(link);
 
   auto cnt = link->GetConnectID();
-
-  std::unique_lock lk(out_links_lock_);
-  auto exist_link = GetOutLinkWOLock(cnt);
-  if (exist_link) {
-    // Такая внешняя связь уже существует
-    // Странно, но теоретически возможно
-    // Ничего не делаем, выходим, забываем про эту связь
-    std::cerr << "??: uuid generator creates double: " << uuids::to_string(cnt)
-              << std::endl;
+  if (!AddOutLink(cnt, link)) {
     return;
   }
-  IntAddOutLinkWOLock(cnt, link);
-  lk.unlock();
 
   SendConnectInformation(cnt, point, kResendTimeout);
+  RunOutLink(cnt);
 }
 
 
@@ -862,10 +880,25 @@ void TrunkClient::SendPacket(PacketInfo pkt) {
 
 void TrunkClient::SendPacket(size_t socket_index,
     boost::asio::ip::udp::endpoint target, PacketInfo pkt) {
-  auto pd = pkt.PacketData;
-  trunk_socket_.async_send_to(boost::asio::buffer(pd.get(), pkt.PacketSize),
-      target,
-      [pd](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "        packet " << my_packet_symbol_ << pkt.PacketID
+       << " sent to trunk";
+    tracer_->Message(pkt.CtxID, ss.str());
+  }
+
+  trunk_socket_.async_send_to(
+      boost::asio::buffer(pkt.PacketData.get(), pkt.PacketSize), target,
+      [pkt, this](boost::system::error_code error, std::size_t /*bytes_sent*/) {
+        if (error) {
+          if (tracer_) {
+            std::stringstream ss;
+            ss << "          !! packet " << my_packet_symbol_ << pkt.PacketID
+               << " hasn't sent with error: " << error.message();
+            tracer_->Message(pkt.CtxID, ss.str());
+          }
+        }
+      });
 
   // Пересчитаем свободный буфер
   std::unique_lock lk(trunk_buffer_lock_);
@@ -961,13 +994,35 @@ void TrunkServer::RequestReadingTrunk(size_t index) {
 }
 
 
-void TrunkServer::ProcessConnectData(
-    uuids::uuid cnt, const PacketConnect* info) {
-  if (tracer_) {
-    tracer_->CreateTrace(cnt);
-  }
+void TrunkServer::ProcessConnectData(uuids::uuid cnt, const PacketConnect* info,
+    size_t socket_index, boost::asio::ip::udp::endpoint target) {
+  bool created = false;
+  std::unique_lock lk(create_outlink_lock_);
+  if (!GetOutLink(cnt)) {
+    // Соединения такого нет - будем создавать
+    if (tracer_) {
+      tracer_->CreateTrace(cnt);
+    }
 
-  // Отправим подтверждение на получение пакета
+    // Создадим внешний коннект
+    auto ol = link_fabric_(info->PointID, cnt);
+    if (!ol) {
+      // TODO ERROR Can't create link
+      std::cerr << "ERROR: Can't create outlink from fabric" << std::endl;
+      return;
+    }
+    if (!AddOutLink(cnt, ol)) {
+      assert(false);  // Вообще по логике такого быть не должно
+      return;
+    }
+    created = true;
+  }
+  // else
+  // Коннект уже существует: возможно пришёл дубликат команды на создание
+  // соединения - штатная ситуация
+  lk.unlock();
+
+  // Отправим подтверждение на получение пакета. Даже если это дубликат
   assert(sizeof(PacketHeader) <= kPacketBufferSize);
   auto buf = GetBuffer();
   auto pkt = (PacketHeader*)(buf.get());
@@ -978,24 +1033,13 @@ void TrunkServer::ProcessConnectData(
   pi.PacketID = kEmptyPacketID;
   pi.PacketData = buf;
   pi.PacketSize = sizeof(PacketHeader);
-  SendPacket(pi);
+  SendPacket(socket_index, target, pi);
+  TracerMessage(cnt, "  Ack connection creation");
 
-  std::unique_lock lk(out_links_lock_);
-  auto exist_link = GetOutLinkWOLock(cnt);
-  if (exist_link) {
-    // Такая внешняя связь уже существует
-    // Такое легко может быть, когда пришёл дубликат сообщения о новом коннекте
-    // Ничего не создаём, выходим
-    return;
+  if (created) {
+    // Запустимся
+    RunOutLink(cnt);
   }
-  // Создадим внешний коннект
-  auto ol = link_fabric_(info->PointID, cnt);
-  if (!ol) {
-    // TODO ERROR Can't create link
-    return;
-  }
-  IntAddOutLinkWOLock(cnt, ol);
-  lk.unlock();
 }
 
 
@@ -1055,11 +1099,26 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
 
 void TrunkServer::SendPacket(size_t socket_index,
     boost::asio::ip::udp::endpoint target, PacketInfo pkt) {
+  if (tracer_) {
+    std::stringstream ss;
+    ss << "        packet " << my_packet_symbol_ << pkt.PacketID
+       << " sent to trunk";
+    tracer_->Message(pkt.CtxID, ss.str());
+  }
+
   auto& ts = trunk_sockets_[socket_index];
-  auto buf = pkt.PacketData;
-  ts.socket.async_send_to(boost::asio::buffer(buf.get(), pkt.PacketSize),
-      target,
-      [buf](boost::system::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
+  ts.socket.async_send_to(
+      boost::asio::buffer(pkt.PacketData.get(), pkt.PacketSize), target,
+      [pkt, this](boost::system::error_code error, std::size_t /*bytes_sent*/) {
+        if (error) {
+          if (tracer_) {
+            std::stringstream ss;
+            ss << "          !! packet " << my_packet_symbol_ << pkt.PacketID
+               << " hasn't sent with error: " << error.message();
+            tracer_->Message(pkt.CtxID, ss.str());
+          }
+        }
+      });
 
   // Пересчитаем свободный буфер
   std::unique_lock lk(buffer_lock_);

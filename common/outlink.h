@@ -43,8 +43,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
       boost::asio::ip::tcp::socket&& socket, const Settings& cfg,
       Tracer* tracer);
   static std::shared_ptr<OutLink> CreateOutLink(ConnectID cnt,
-      boost::asio::io_context& ctx,
-      std::string address, uint16_t port, const Settings& cfg, Tracer* tracer);
+      boost::asio::io_context& ctx, std::string address, uint16_t port,
+      const Settings& cfg, Tracer* tracer);
 
 
   virtual ~OutLink();
@@ -102,8 +102,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   /*! Конструктор экземпляра на основе сокета с установленным соединением
   \param socket сокет с соединением */
   OutLink(ConnectID cnt, boost::asio::ip::tcp::socket&& socket,
-      const Settings& cfg,
-      Tracer* tracer);
+      const Settings& cfg, Tracer* tracer);
 
   /*! Конструктор экземпляра на основе адреса и порта (например mysite.com:80).
   Подключение выполняется автоматически (и асинхронно) при вызове функции Run.
@@ -114,8 +113,7 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   сайта
   \param port порт для подключения */
   OutLink(ConnectID cnt, boost::asio::io_context& ctx, std::string address,
-      uint16_t port,
-      const Settings& cfg, Tracer* tracer);
+      uint16_t port, const Settings& cfg, Tracer* tracer);
 
 
   static const size_t kChunkSize = 800;
@@ -198,7 +196,8 @@ class OutLink: public std::enable_shared_from_this<OutLink> {
   /*! Таймер на ожидание новых данных для записи */
   boost::asio::steady_timer write_idle_timer_;
 
-  /*! Таймер для ожидания на чтение, чтобы не переполнять входную очередь */
+  /*! Таймер ожидания разрешения чтения, чтобы передались и подтвердились
+  переданные данные - и не переполнять входную очередь */
   boost::asio::steady_timer read_idle_timer_;
 
   /*! Файл и блокировка для логирования операций по коннекту */

@@ -213,6 +213,10 @@ class TrunkLink {
   файл. Указатель может быть nullptr */
   Tracer* tracer_;
 
+  /*! Символы для обозначения пакетов на своей стороне и на другой стороне
+  Используются для удобства разбора логов, зависят от server_side_ */
+  char my_packet_symbol_, other_packet_symbol_;
+
   /*! Обработка пакета с данными полученными из транка. Никакая предварительная
   проверка валидности не проводилась. Параметры socket_index и client
   используются для отправки ответа даже для несуществующего или уже удалённого
@@ -247,7 +251,8 @@ class TrunkLink {
       boost::asio::ip::udp::endpoint target, PacketInfo pkt) = 0;
 
   // Обработчики отдельных команд
-  virtual void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info){};
+  virtual void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info,
+      size_t socket_index, boost::asio::ip::udp::endpoint target){};
   virtual void ProcessAckConnectData(
       uuids::uuid cnt, const PacketHeader* info){};
 
@@ -265,12 +270,6 @@ class TrunkLink {
   \param cnt идентификатор соединения
   \param written объем записанных данных (для другого конца коннекта) */
   void ProcessLive(uuids::uuid cnt, uint64_t written);
-
-  /*! Внутренняя функция: добавляет внешнюю связь для заданного коннекта.
-  Функцию необходимо вызывать с захваченной блокировкой out_links_lock_.
-  \param cnt идентификатор подключения
-  \param link экземпляр объекта внешней связи */
-  void IntAddOutLinkWOLock(uuids::uuid cnt, std::shared_ptr<OutLink> link);
 
   // TODO
   // Вызов должен быть закрыт out_links_lock_
@@ -296,6 +295,20 @@ class TrunkLink {
   /*! Хелпер на вывод сообщения по соединению в трейсер */
   void TracerMessage(uuids::uuid id, const std::string& msg);
 
+  /*! Функция добавления нового внешнего соединения для работы с транком
+  Функция добавляет и проводит регистрационные действия, инициализирует
+  счётчики. НО не запускает операции чтения/записи на соединении: причина:
+  сначала регистрируемся (убеждаемся в отсутствии дубликатов, всё ок),
+  потом шлём регистрационную информацию везде, потом запускаем соединение в
+  работу
+  \param cnt идентификатор подключения
+  \param link экземпляр внешнего соединения */
+  bool AddOutLink(uuids::uuid cnt, std::shared_ptr<OutLink> link);
+
+  /*! Функция запуска операций чтение/запись для внешней связи и выдача
+  кэша из блоков данных и команд закрытия (если они есть)
+  \param cnt идентификатор подключения */
+  void RunOutLink(uuids::uuid cnt);
 
  private:
   TrunkLink() = delete;
@@ -328,9 +341,6 @@ class TrunkLink {
   static const size_t kUndefinedSizeT = static_cast<size_t>(-1);
 
   bool server_side_;
-  /*! Символы для обозначения пакетов на своей стороне и на другой стороне
-  Используются для удобства разбора логов, зависят от server_side_ */
-  char my_packet_symbol_, other_packet_symbol_;
 
   // TODO Переделать в deque
   // TODO Descr
@@ -551,6 +561,9 @@ class TrunkServer: public TrunkLink {
 
   std::function<std::shared_ptr<OutLink>(PointID, ConnectID)> link_fabric_;
 
+  /*! Лок на создание и добавление нового соединения */
+  std::mutex create_outlink_lock_;
+
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();
 
@@ -564,7 +577,8 @@ class TrunkServer: public TrunkLink {
 
   // TODO Descr
 
-  void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info) override;
+  void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info,
+      size_t socket_index, boost::asio::ip::udp::endpoint target) override;
 
   int GetAvailableBuffer(ConnectID ctx) override;
 
