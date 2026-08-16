@@ -560,6 +560,9 @@ class TrunkServer: public TrunkLink {
 
   std::function<std::shared_ptr<OutLink>(PointID, ConnectID)> link_fabric_;
 
+  /*! Лок на создание и добавление нового соединения */
+  std::mutex create_outlink_lock_;
+
   // TODO Descr?
   std::shared_ptr<PacketBuffer> GetBuffer();
 

@@ -975,23 +975,33 @@ void TrunkServer::RequestReadingTrunk(size_t index) {
 
 void TrunkServer::ProcessConnectData(uuids::uuid cnt, const PacketConnect* info,
     size_t socket_index, boost::asio::ip::udp::endpoint target) {
-  if (tracer_) {
-    tracer_->CreateTrace(cnt);
-  }
+  bool created = false;
+  std::unique_lock lk(create_outlink_lock_);
+  if (!GetOutLink(cnt)) {
+    // Соединения такого нет - будем создавать
+    if (tracer_) {
+      tracer_->CreateTrace(cnt);
+    }
 
-  // Создадим внешний коннект
-  auto ol = link_fabric_(info->PointID, cnt);
-  if (!ol) {
-    // TODO ERROR Can't create link
-    std::cerr << "ERROR: Can't create outlink from fabric" << std::endl;
-    return;
+    // Создадим внешний коннект
+    auto ol = link_fabric_(info->PointID, cnt);
+    if (!ol) {
+      // TODO ERROR Can't create link
+      std::cerr << "ERROR: Can't create outlink from fabric" << std::endl;
+      return;
+    }
+    if (!AddOutLink(cnt, ol)) {
+      assert(false);  // Вообще по логике такого быть не должно
+      return;
+    }
+    created = true;
   }
+  // else
+  // Коннект уже существует: возможно пришёл дубликат команды на создание
+  // соединения - штатная ситуация
+  lk.unlock();
 
-  if (AddOutLink(cnt, ol)) {
-    return;
-  }
-
-  // Отправим подтверждение на получение пакета
+  // Отправим подтверждение на получение пакета. Даже если это дубликат
   assert(sizeof(PacketHeader) <= kPacketBufferSize);
   auto buf = GetBuffer();
   auto pkt = (PacketHeader*)(buf.get());
@@ -1003,8 +1013,12 @@ void TrunkServer::ProcessConnectData(uuids::uuid cnt, const PacketConnect* info,
   pi.PacketData = buf;
   pi.PacketSize = sizeof(PacketHeader);
   SendPacket(socket_index, target, pi);
+  TracerMessage(cnt, "  Ack connection creation");
 
-  RunOutLink(cnt);
+  if (created) {
+    // Запустимся
+    RunOutLink(cnt);
+  }
 }
 
 
