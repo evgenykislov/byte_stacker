@@ -235,7 +235,7 @@ class TrunkLink {
   возвращается размер kUdpBufferUnavailable.
   \param ctx идентификатор соединения
   \return размер свободного места в байтах. Размер может быть отрицательным */
-  virtual int GetAvailableBuffer(ConnectID ctx) = 0;
+  virtual int64_t GetAvailableBuffer(ConnectID ctx) = 0;
 
   /*! Отправить пакет по транку. Ошибки отправки не контролируются,
   переотправка должна реализовываться раньше/в другом месте
@@ -466,10 +466,11 @@ class TrunkClient: public TrunkLink {
 
   /*!< Допустимый размер буфера на отправку для сокета. Берётся меньше
    * реального, чтобы был запас на лив-пакеты и др. важные сообщения */
-  int trunk_socket_buffer_size_;
+  int64_t trunk_socket_buffer_size_;
 
-  /*!< Cвободный размер буфера на метку времени */
-  int trunk_buffer_last_size_;
+  /*!< Cвободный размер буфера на метку времени. Используем 64-бита, чтобы
+  при вычислениях с микросекундами не наступало переполнения */
+  int64_t trunk_buffer_last_size_;
   std::chrono::steady_clock::time_point trunk_buffer_last_time_;
   std::mutex trunk_buffer_lock_;
 
@@ -490,7 +491,7 @@ class TrunkClient: public TrunkLink {
 
   // Asio Requesters
 
-  int GetAvailableBuffer(ConnectID ctx) override;
+  int64_t GetAvailableBuffer(ConnectID ctx) override;
 
   void SendPacket(PacketInfo pkt) override;
   void SendPacket(size_t socket_index, boost::asio::ip::udp::endpoint target,
@@ -538,11 +539,11 @@ class TrunkServer: public TrunkLink {
 
     // Отслеживание размера буфера на отправку
     /*!< Cвободный размер буфера на метку времени */
-    int buffer_last_size_;
+    int64_t buffer_last_size_;
     std::chrono::steady_clock::time_point buffer_last_time_;
     /*!< Допустимый размер буфера на отправку для сокета. Берётся меньше
      * реального, чтобы был запас на лив-пакеты и др. важные сообщения */
-    int socket_buffer_size_;
+    int64_t socket_buffer_size_;
   };
   std::vector<ServerSocket> trunk_sockets_;
 
@@ -580,7 +581,7 @@ class TrunkServer: public TrunkLink {
   void ProcessConnectData(uuids::uuid cnt, const PacketConnect* info,
       size_t socket_index, boost::asio::ip::udp::endpoint target) override;
 
-  int GetAvailableBuffer(ConnectID ctx) override;
+  int64_t GetAvailableBuffer(ConnectID ctx) override;
 
   void SendPacket(PacketInfo pkt) override;
   void SendPacket(size_t socket_index, boost::asio::ip::udp::endpoint target,

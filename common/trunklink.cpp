@@ -302,7 +302,9 @@ void TrunkLink::SendPacketQueue() {
     auto info = *it;
 
     auto ava = GetAvailableBuffer(info.CtxID);
-    if (ava < static_cast<int>(info.PacketSize)) {
+    /* TODO Сделать разбивку по номеру сокета, чтобы более короткий пакет не
+    уходил раньше более большого, хотя и вставшего в очередь раньше */
+    if (ava < static_cast<int64_t>(info.PacketSize)) {
       ++it;
       continue;
     }
@@ -852,14 +854,13 @@ void TrunkClient::ReceiveTrunkData() {
       });
 }
 
-int TrunkClient::GetAvailableBuffer(ConnectID ctx) {
+int64_t TrunkClient::GetAvailableBuffer(ConnectID ctx) {
   std::unique_lock lk(trunk_buffer_lock_);
   auto curt = std::chrono::steady_clock::now();
   auto intr = std::chrono::duration_cast<std::chrono::microseconds>(
       curt - trunk_buffer_last_time_)
                   .count();
-
-  trunk_buffer_last_size_ += static_cast<int>(
+  trunk_buffer_last_size_ += static_cast<int64_t>(
       intr * kDefaultUdpTrafficSpeed);  // Учитываем, что со временем буфер
                                         // освобождается
   if (trunk_buffer_last_size_ > trunk_socket_buffer_size_) {
@@ -1043,7 +1044,7 @@ void TrunkServer::ProcessConnectData(uuids::uuid cnt, const PacketConnect* info,
 }
 
 
-int TrunkServer::GetAvailableBuffer(ConnectID ctx) {
+int64_t TrunkServer::GetAvailableBuffer(ConnectID ctx) {
   ConnectInfo info;
   info.connect = ctx;
 
@@ -1060,7 +1061,7 @@ int TrunkServer::GetAvailableBuffer(ConnectID ctx) {
       curt - ts.buffer_last_time_)
                   .count();
 
-  ts.buffer_last_size_ += static_cast<int>(
+  ts.buffer_last_size_ += static_cast<int64_t>(
       intr * kDefaultUdpTrafficSpeed);  // Учитываем, что со временем буфер
                                         // освобождается
   if (ts.buffer_last_size_ > ts.socket_buffer_size_) {
