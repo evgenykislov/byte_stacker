@@ -6,8 +6,39 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3E58379A3054CC3D00043F37 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3E5837993054CC3D00043F37 /* NetworkExtension.framework */; };
+		3E5837A23054CC3D00043F37 /* stacker-gate.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3E5837973054CC3D00043F37 /* stacker-gate.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3E5837A03054CC3D00043F37 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3E5837723054C90200043F37 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3E5837963054CC3D00043F37;
+			remoteInfo = "stacker-gate";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		3E5837A73054CC3D00043F37 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				3E5837A23054CC3D00043F37 /* stacker-gate.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		3E58377A3054C90200043F37 /* stacker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = stacker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3E5837973054CC3D00043F37 /* stacker-gate.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "stacker-gate.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		3E5837993054CC3D00043F37 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -17,6 +48,13 @@
 				Info.plist,
 			);
 			target = 3E5837793054C90200043F37 /* stacker */;
+		};
+		3E5837A63054CC3D00043F37 /* Exceptions for "stacker-gate" folder in "stacker-gate" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3E5837963054CC3D00043F37 /* stacker-gate */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -29,6 +67,14 @@
 			path = stacker;
 			sourceTree = "<group>";
 		};
+		3E58379B3054CC3D00043F37 /* stacker-gate */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3E5837A63054CC3D00043F37 /* Exceptions for "stacker-gate" folder in "stacker-gate" target */,
+			);
+			path = "stacker-gate";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,6 +85,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3E5837943054CC3D00043F37 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3E58379A3054CC3D00043F37 /* NetworkExtension.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -46,6 +100,8 @@
 			isa = PBXGroup;
 			children = (
 				3E58377C3054C90200043F37 /* stacker */,
+				3E58379B3054CC3D00043F37 /* stacker-gate */,
+				3E5837983054CC3D00043F37 /* Frameworks */,
 				3E58377B3054C90200043F37 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,8 +110,17 @@
 			isa = PBXGroup;
 			children = (
 				3E58377A3054C90200043F37 /* stacker.app */,
+				3E5837973054CC3D00043F37 /* stacker-gate.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		3E5837983054CC3D00043F37 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3E5837993054CC3D00043F37 /* NetworkExtension.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -68,10 +133,12 @@
 				3E5837763054C90200043F37 /* Sources */,
 				3E5837773054C90200043F37 /* Frameworks */,
 				3E5837783054C90200043F37 /* Resources */,
+				3E5837A73054CC3D00043F37 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				3E5837A13054CC3D00043F37 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				3E58377C3054C90200043F37 /* stacker */,
@@ -82,6 +149,28 @@
 			productName = stacker;
 			productReference = 3E58377A3054C90200043F37 /* stacker.app */;
 			productType = "com.apple.product-type.application";
+		};
+		3E5837963054CC3D00043F37 /* stacker-gate */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3E5837A33054CC3D00043F37 /* Build configuration list for PBXNativeTarget "stacker-gate" */;
+			buildPhases = (
+				3E5837933054CC3D00043F37 /* Sources */,
+				3E5837943054CC3D00043F37 /* Frameworks */,
+				3E5837953054CC3D00043F37 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				3E58379B3054CC3D00043F37 /* stacker-gate */,
+			);
+			name = "stacker-gate";
+			packageProductDependencies = (
+			);
+			productName = "stacker-gate";
+			productReference = 3E5837973054CC3D00043F37 /* stacker-gate.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -94,6 +183,9 @@
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					3E5837793054C90200043F37 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					3E5837963054CC3D00043F37 = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
@@ -113,12 +205,20 @@
 			projectRoot = "";
 			targets = (
 				3E5837793054C90200043F37 /* stacker */,
+				3E5837963054CC3D00043F37 /* stacker-gate */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		3E5837783054C90200043F37 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3E5837953054CC3D00043F37 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +235,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3E5837933054CC3D00043F37 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3E5837A13054CC3D00043F37 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3E5837963054CC3D00043F37 /* stacker-gate */;
+			targetProxy = 3E5837A03054CC3D00043F37 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3E58378E3054C90300043F37 /* Debug */ = {
@@ -143,6 +258,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = stacker/stacker.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KC65DS4263;
@@ -177,6 +293,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = stacker/stacker.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KC65DS4263;
@@ -327,6 +444,64 @@
 			};
 			name = Release;
 		};
+		3E5837A43054CC3D00043F37 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "stacker-gate/stacker_gate.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = KC65DS4263;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "stacker-gate/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "stacker-gate";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.apoheliy.stacker.stacker-gate";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3E5837A53054CC3D00043F37 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "stacker-gate/stacker_gate.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = KC65DS4263;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "stacker-gate/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "stacker-gate";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.apoheliy.stacker.stacker-gate";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -344,6 +519,15 @@
 			buildConfigurations = (
 				3E58378E3054C90300043F37 /* Debug */,
 				3E58378F3054C90300043F37 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3E5837A33054CC3D00043F37 /* Build configuration list for PBXNativeTarget "stacker-gate" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3E5837A43054CC3D00043F37 /* Debug */,
+				3E5837A53054CC3D00043F37 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
