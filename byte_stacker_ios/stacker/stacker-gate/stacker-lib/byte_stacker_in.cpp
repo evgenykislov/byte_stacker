@@ -1,0 +1,195 @@
+﻿// byte_stacker_in.cpp : Defines the entry point for the application.
+//
+
+#include "byte_stacker_in.h"
+
+#include <map>
+#include <vector>
+#include <utility>
+
+#include <boost/asio.hpp>
+
+#include "inlink.h"
+#include "outlink.h"
+#include "parser.h"
+#include "settings.h"
+#include "trace.h"
+#include "tracer.h"
+#include "trunklink.h"
+
+namespace bai = boost::asio::ip;
+namespace this_coro = boost::asio::this_coro;
+
+const size_t kPoolSize = 4;
+const int kInformationInterval = 1000;
+
+std::mt19937 generator_;
+
+
+/*! Регистрируем новое соединение с подключенным сокетом
+\param trc клиент транковой связи
+\param id идентификатор точки подключения (может быть несколько подключений для
+одной и той-же точки)
+\param socket подключенный tcp сокет новоко соединения */
+void RegisterNewConnection(TrunkClient& trc, PointID id,
+    bai::tcp::socket&& socket, const Settings& cfg, Tracer* tracer) {
+  // Сгенерируем идентификатор
+  uuids::uuid_random_generator gen{generator_};
+  uuids::uuid cnt = gen();
+
+  if (tracer) {
+    tracer->CreateTrace(cnt);
+  }
+
+  try {
+    auto ol = OutLink::CreateOutLink(cnt, std::move(socket), cfg, tracer);
+    trc.AddConnect(id, ol);
+  } catch (std::exception&) {
+    // Незарегистрировали. Просто выходим
+  }
+}
+
+
+/*! Запрос на подключение по указанному акцептору. Функция сама себя вызывает
+в бесконечном цикле, пока работает сетевой контекст (до завершения приложения)
+\param ctx сетевой контекст
+\param acp акцептор, уже привязанный к нужному адресу и порту
+\param trc клиентский обработчик, в котором регистрируются новые соединения
+\param id идентификатор точки, задаётся в командной строке */
+void RequestAccept(boost::asio::io_context& ctx,
+    std::shared_ptr<bai::tcp::acceptor> acp, TrunkClient& trc, PointID id,
+    const Settings& cfg, Tracer* tracer) {
+  auto socket = std::make_shared<bai::tcp::socket>(ctx);
+  acp->async_accept(*socket, [&ctx, &trc, socket, acp, id, &cfg, tracer](
+                                 const boost::system::error_code& error) {
+    if (!error) {
+      // Получили новое соединение. Регистрируем, работаем
+      RegisterNewConnection(trc, id, std::move(*socket.get()), cfg, tracer);
+    } else if (error == boost::asio::error::connection_aborted) {
+      // Соединение пришло и сразу разорвалось. Это некритично. Продолжаем
+      // работу
+    } else if (error == boost::asio::error::operation_aborted) {
+      // Штатно завершаем работу
+      return;
+    } else {
+      // Все остальные ошибки критичные. Выходим
+      trlog(
+          "ERROR: can't accept to point %u: %s\n", id, error.message().c_str());
+      return;
+    }
+
+    // Продолжаем принимать новые подключения
+    RequestAccept(ctx, acp, trc, id, cfg, tracer);
+  });
+}
+
+
+/*! Создание акцептора и запуск его опроса. Если при создании акцептора или
+запуске ожидания возникают ошибки, то выдаётся исключение
+\param ctx сетевой контекст
+\param trc клиентский обработчик, в котором регистрируются новые соединения
+\param id идентификатор точки, задаётся в командной строке
+\param point точка приёма подключений
+\return акцептор, на котором уже ожидаютсмя подключения */
+std::shared_ptr<bai::tcp::acceptor> ListenLocalPoint(
+    boost::asio::io_context& ctx, TrunkClient& trc, PointID id,
+    boost::asio::ip::tcp::endpoint point, const Settings& cfg, Tracer* tracer) {
+  auto acceptor = std::make_shared<bai::tcp::acceptor>(ctx, point);
+  RequestAccept(ctx, acceptor, trc, id, cfg, tracer);
+  return acceptor;
+}
+
+
+int RunClient(std::map<unsigned int, bai::tcp::endpoint> local_points,
+    std::vector<bai::udp::endpoint> trunk_points, const Settings& cfg,
+    std::shared_ptr<Tracer> tracer) {
+  int result = 0;
+  try {
+    boost::asio::io_context ctx;
+    // Переменная на остановку
+    std::condition_variable stop_var;
+    bool stop_flag = false;
+    std::mutex stop_lock;
+
+    TrunkClient trc(ctx, trunk_points, cfg, tracer.get());
+
+    boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
+    signals.async_wait([&](auto, auto) {
+      // Проинформируем об остановке
+      std::lock_guard lk(stop_lock);
+      stop_flag = true;
+      stop_var.notify_all();
+    });
+
+    // Подготовка акцепторов
+    std::vector<std::shared_ptr<bai::tcp::acceptor>> acceptors;
+    for (auto& p : local_points) {
+      auto acp =
+          ListenLocalPoint(ctx, trc, p.first, p.second, cfg, tracer.get());
+      acceptors.push_back(acp);
+    }
+
+    // Запустим потоки обработки сети
+    std::vector<std::thread> pool;
+    for (size_t i = 0; i < kPoolSize; ++i) {
+      std::thread t([&ctx]() { ctx.run(); });
+      pool.push_back(std::move(t));
+    }
+
+    // Вывод полезной информации
+    std::unique_lock sl(stop_lock);
+    while (
+        !stop_var.wait_for(sl, std::chrono::milliseconds(kInformationInterval),
+            [&stop_flag]() { return stop_flag; })) {
+      auto stat = trc.GetStat();
+
+      // Обязательная часть
+      if (stat.no_live) {
+        // Есть проблемы с подключением
+        tout(": WARNING: Trunk doesn't work! Check internet connection!\n");
+      }
+
+      // Дополнительная часть
+#if 0
+      // Вывод общей статистики
+      auto ospeed = (unsigned int)(stat.StreamToOutLinks * 1000 / 1024 /
+                                   kInformationInterval);
+      auto ispeed = (unsigned int)(stat.StreamFromOutLinks * 1000 / 1024 /
+                                   kInformationInterval);
+      auto cnt = (unsigned int)(stat.ConnectAmount);
+      tout(
+          ": FAULT: %8u | Local: %8u kBytes/s | Trunk: %8u kBytes/s | "
+          "Connects: %8u | Ping(min,avg,max): %.1f/%.1f/%.1f | Cache: %8u\n",
+          stat.FauldPacket, ospeed, ispeed, cnt, stat.MinPing / 1000.0,
+          stat.AveragePing / 1000.0, stat.MaxPing / 1000.0, stat.cache_load);
+#endif
+    }
+    sl.unlock();
+
+    // -----------------
+    // Останавливаем приложение
+
+    for (auto i : acceptors) {
+      boost::system::error_code ec;
+      i->close(ec);
+      if (ec) {
+        trlog("ERROR: can't close acceptance: %s\n", ec.message().c_str());
+      }
+    }
+
+    // Остановим сетевой контекст и потоки
+    ctx.stop();
+    for (auto& item : pool) {
+      if (item.joinable()) {
+        item.join();
+      }
+    }
+
+
+  } catch (std::exception& err) {
+    std::printf("Exception: %s\n", err.what());
+    result = 1;
+  }
+
+  return result;
+}
