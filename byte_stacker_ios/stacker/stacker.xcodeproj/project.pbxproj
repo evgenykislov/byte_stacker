@@ -452,6 +452,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KC65DS4263;
 				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[arch=*]" = "/Users/evgenij/programm/boost-iosx/frameworks/Headers";
 				INFOPLIST_FILE = "stacker-gate/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "stacker-gate";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -482,6 +483,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KC65DS4263;
 				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[arch=*]" = "/Users/evgenij/programm/boost-iosx/frameworks/Headers";
 				INFOPLIST_FILE = "stacker-gate/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "stacker-gate";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
