@@ -72,6 +72,19 @@
 			exceptions = (
 				3E5837A63054CC3D00043F37 /* Exceptions for "stacker-gate" folder in "stacker-gate" target */,
 			);
+			explicitFileTypes = {
+				bridge.c = sourcecode.cpp.cpp;
+				"stacker-lib/byte_stacker_in.h" = sourcecode.cpp.h;
+				"stacker-lib/data.h" = sourcecode.cpp.h;
+				"stacker-lib/inlink.h" = sourcecode.cpp.h;
+				"stacker-lib/outlink.h" = sourcecode.cpp.h;
+				"stacker-lib/parser.h" = sourcecode.cpp.h;
+				"stacker-lib/settings.h" = sourcecode.cpp.h;
+				"stacker-lib/trace.h" = sourcecode.cpp.h;
+				"stacker-lib/tracer.h" = sourcecode.cpp.h;
+				"stacker-lib/trunklink.h" = sourcecode.cpp.h;
+				"stacker-lib/uuid.h" = sourcecode.cpp.h;
+			};
 			path = "stacker-gate";
 			sourceTree = "<group>";
 		};
@@ -469,6 +482,7 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				"SWIFT_OBJC_BRIDGING_HEADER[arch=*]" = "./stacker-gate/bridge.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -500,6 +514,7 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				"SWIFT_OBJC_BRIDGING_HEADER[arch=*]" = "./stacker-gate/bridge.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
