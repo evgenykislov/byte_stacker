@@ -4,6 +4,8 @@
 
 #include "parser.h"
 #include "settings.h"
+#include "tracer.h"
+
 
 namespace bai = boost::asio::ip;
 
@@ -78,5 +80,11 @@ int main(int argc, char** argv) {
     return 3;
   }
 
-  return RunClient(lps, trp, cfg);
+  std::shared_ptr<Tracer> tracer;
+  if (!cfg.trace_storage_path.empty()) {
+    tracer = std::make_shared<Tracer>(
+        cfg.trace_storage_path, cfg.trace_completed_path);
+  }
+
+  return RunClient(lps, trp, cfg, tracer);
 }

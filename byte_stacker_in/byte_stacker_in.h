@@ -18,6 +18,6 @@ class Tracer;
 int RunClient(
     std::map<unsigned int, boost::asio::ip::tcp::endpoint> local_points,
     std::vector<boost::asio::ip::udp::endpoint> trunk_points,
-    const Settings& cfg);
+    const Settings& cfg, std::shared_ptr<Tracer> tracer);
 
 #endif

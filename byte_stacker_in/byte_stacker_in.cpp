@@ -101,7 +101,9 @@ std::shared_ptr<bai::tcp::acceptor> ListenLocalPoint(
 
 
 int RunClient(std::map<unsigned int, bai::tcp::endpoint> local_points,
-    std::vector<bai::udp::endpoint> trunk_points, const Settings& cfg) {
+    std::vector<bai::udp::endpoint> trunk_points, const Settings& cfg,
+    std::shared_ptr<Tracer> tracer) {
+  int result = 0;
   try {
     boost::asio::io_context ctx;
     // Переменная на остановку
@@ -109,7 +111,7 @@ int RunClient(std::map<unsigned int, bai::tcp::endpoint> local_points,
     bool stop_flag = false;
     std::mutex stop_lock;
 
-    TrunkClient trc(ctx, trp, cfg, tracer.get());
+    TrunkClient trc(ctx, trunk_points, cfg, tracer.get());
 
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) {
@@ -121,7 +123,7 @@ int RunClient(std::map<unsigned int, bai::tcp::endpoint> local_points,
 
     // Подготовка акцепторов
     std::vector<std::shared_ptr<bai::tcp::acceptor>> acceptors;
-    for (auto& p : lps) {
+    for (auto& p : local_points) {
       auto acp =
           ListenLocalPoint(ctx, trc, p.first, p.second, cfg, tracer.get());
       acceptors.push_back(acp);
