@@ -43,6 +43,8 @@ Tracer::Tracer(
 }
 
 void Tracer::CreateTrace(uuids::uuid id) {
+  CloseTraces();
+
   std::lock_guard lk(trace_lock_);
   if (storage_.find(id) != storage_.end()) {
     // Ошибка логики. Уже всё отслеживается
@@ -53,6 +55,7 @@ void Tracer::CreateTrace(uuids::uuid id) {
   storage_[id].creation = std::chrono::steady_clock::now();
   auto it = storage_.find(id);
   assert(it != storage_.end());
+  it->second.finished = false;
   std::string name = uuids::to_string(id);
   it->second.path = storage_path_ / name;
   if (!success_path_.empty()) {
@@ -64,13 +67,14 @@ void Tracer::CreateTrace(uuids::uuid id) {
     std::cerr << "ERROR!: Can't create trace file " << it->second.path
               << std::endl;
     storage_.erase(it);
-    return;
+  } else {
+    it->second.file << "Создание соединения: " << timemark() << std::endl;
   }
-
-  it->second.file << "Создание соединения: " << timemark() << std::endl;
 }
 
 void Tracer::FinishTrace(uuids::uuid id) {
+  CloseTraces();
+
   std::lock_guard lk(trace_lock_);
   auto it = storage_.find(id);
   if (it == storage_.end()) {
@@ -82,21 +86,15 @@ void Tracer::FinishTrace(uuids::uuid id) {
 
   it->second.file << "--------- Завершение соединения: " << timemark()
                   << std::endl;
-  it->second.file.close();
-
-  if (!it->second.success_path.empty()) {
-    std::error_code err;
-    std::filesystem::rename(it->second.path, it->second.success_path, err);
-    if (err) {
-      std::cerr << "Renaming trace log throws error: " << err.message() << std::endl;
-    }
-  }
-
-  storage_.erase(it);
+  it->second.afterfinish = std::chrono::steady_clock::now() +
+                           std::chrono::milliseconds(kAfterFinishTimeoutMS);
+  it->second.finished = true;
 }
 
 
 void Tracer::Message(uuids::uuid id, const std::string& msg) {
+  CloseTraces();
+
   std::lock_guard lk(trace_lock_);
   auto it = storage_.find(id);
   if (it == storage_.end()) {
@@ -124,4 +122,33 @@ void Tracer::CommonMessage(const std::string& msg) {
   }
 
   f << timemark() << ":" << msg << std::endl;
+}
+
+void Tracer::CloseTraces() {
+  auto curt = std::chrono::steady_clock::now();
+  std::lock_guard lk(trace_lock_);
+  for (auto it = storage_.begin(); it != storage_.end();
+      /* dont increment here */) {
+    if (!it->second.finished) {
+      ++it;
+      continue;
+    }
+    if (curt < it->second.afterfinish) {
+      ++it;
+      continue;
+    }
+
+    it->second.file.close();
+
+    if (!it->second.success_path.empty()) {
+      std::error_code err;
+      std::filesystem::rename(it->second.path, it->second.success_path, err);
+      if (err) {
+        std::cerr << "Renaming trace log throws error: " << err.message()
+                  << std::endl;
+      }
+    }
+
+    it = storage_.erase(it);
+  }
 }

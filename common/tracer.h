@@ -33,14 +33,20 @@ class Tracer {
   struct StreamInfo {
     std::ofstream file;
     std::chrono::steady_clock::time_point creation;
+    bool finished;
+    std::chrono::steady_clock::time_point afterfinish;
     std::filesystem::path path;
     std::filesystem::path success_path;
   };
 
+  const int kAfterFinishTimeoutMS = 20000;
+
+  void CloseTraces();
+
   std::filesystem::path storage_path_;
   std::filesystem::path success_path_;
   std::map<uuids::uuid, StreamInfo> storage_;
-  std::mutex trace_lock_;
+  std::recursive_mutex trace_lock_;
 };
 
 #endif  // TRACER_H

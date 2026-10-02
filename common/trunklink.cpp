@@ -1068,7 +1068,7 @@ int64_t TrunkServer::GetAvailableBuffer(ConnectID ctx) {
     ts.buffer_last_size_ = ts.socket_buffer_size_;
   }
   ts.buffer_last_time_ = curt;
-  int res = ts.buffer_last_size_;
+  auto res = ts.buffer_last_size_;
   lk.unlock();
 
   return res;
