@@ -74,7 +74,7 @@ void Tracer::CreateTrace(uuids::uuid id) {
 
 void Tracer::FinishTrace(uuids::uuid id) {
   CloseTraces();
-  
+
   std::lock_guard lk(trace_lock_);
   auto it = storage_.find(id);
   if (it == storage_.end()) {
@@ -86,14 +86,15 @@ void Tracer::FinishTrace(uuids::uuid id) {
 
   it->second.file << "--------- Завершение соединения: " << timemark()
                   << std::endl;
-  it->second.afterfinish = std::chrono::steady_clock::now() + std::chrono::milliseconds(kAfterFinishTimeoutMS);
+  it->second.afterfinish = std::chrono::steady_clock::now() +
+                           std::chrono::milliseconds(kAfterFinishTimeoutMS);
   it->second.finished = true;
 }
 
 
 void Tracer::Message(uuids::uuid id, const std::string& msg) {
   CloseTraces();
-  
+
   std::lock_guard lk(trace_lock_);
   auto it = storage_.find(id);
   if (it == storage_.end()) {
@@ -126,7 +127,8 @@ void Tracer::CommonMessage(const std::string& msg) {
 void Tracer::CloseTraces() {
   auto curt = std::chrono::steady_clock::now();
   std::lock_guard lk(trace_lock_);
-  for (auto it = storage_.begin(); it != storage_.end(); /* dont increment here */) {
+  for (auto it = storage_.begin(); it != storage_.end();
+      /* dont increment here */) {
     if (!it->second.finished) {
       ++it;
       continue;
@@ -142,7 +144,8 @@ void Tracer::CloseTraces() {
       std::error_code err;
       std::filesystem::rename(it->second.path, it->second.success_path, err);
       if (err) {
-        std::cerr << "Renaming trace log throws error: " << err.message() << std::endl;
+        std::cerr << "Renaming trace log throws error: " << err.message()
+                  << std::endl;
       }
     }
 
