@@ -396,6 +396,11 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
     boost::asio::ip::udp::endpoint client, const void* data, size_t data_size) {
   if (data_size < sizeof(PacketHeader)) {
     // Битый пакет непонятно откуда и от кого
+    if (cfg_settings_.LogFormatError) {
+      std::stringstream s;
+      s << "*** Unknown packet with very low size " << data_size << " bytes";
+      cfg_settings_.OutputLog(s.str());
+    }
     return;
   }
 
@@ -415,7 +420,9 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
       case kTrunkCommandDataIn:
       case kTrunkCommandAckDataOut:
         // Это всё ошибочниые команды
-        // TODO ERROR
+        if (cfg_settings_.LogFormatError) {
+          cfg_settings_.OutputLog("*** Wrong command for server size");
+        }
         return;
         break;
     }
@@ -426,7 +433,9 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
       case kTrunkCommandDataOut:
       case kTrunkCommandAckDataIn:
         // Это всё ошибочниые команды
-        // TODO ERROR
+        if (cfg_settings_.LogFormatError) {
+          cfg_settings_.OutputLog("*** Wrong command for client size");
+        }
         return;
         break;
     }
@@ -436,6 +445,9 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
     case kTrunkCommandCreateConnect:
       if (data_size < sizeof(PacketConnect)) {
         // Неполный формат
+        if (cfg_settings_.LogFormatError) {
+          cfg_settings_.OutputLog("*** Wrong size of create copnnect command");
+        }
         return;
       }
       ProcessConnectData(
@@ -448,6 +460,9 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
     case kTrunkCommandDataIn:
       if (data_size < sizeof(PacketData)) {
         // Неполный формат
+        if (cfg_settings_.LogFormatError) {
+          cfg_settings_.OutputLog("*** Wrong size of data command");
+        }
         return;
       }
 
@@ -455,6 +470,9 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
         auto pd = static_cast<const PacketData*>(hdr);
         if (data_size != (sizeof(PacketData) + pd->DataSize)) {
           // Ошибка формата
+          if (cfg_settings_.LogFormatError) {
+            cfg_settings_.OutputLog("*** Wrong data size for data command");
+          }
           return;
         }
         SendDataAck(cnt, pd->PacketIndex, socket_index, client);
@@ -465,6 +483,12 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
     case kTrunkCommandAckDataIn:
       if (data_size != sizeof(PacketAck)) {
         // Неправильный формат
+        if (cfg_settings_.LogFormatError) {
+          std::stringstream s;
+          s << "Trunk Connect " << uuids::to_string(cnt)
+            << ": receive packet 'ack data' with wrong size";
+          cfg_settings_.OutputLog(s.str());
+        }
         return;
       }
 
@@ -506,6 +530,9 @@ void TrunkLink::ProcessTrunkData(size_t socket_index,
     case kTrunkCommandLive:
       if (data_size != sizeof(PacketLive)) {
         // Неправильный формат
+        if (cfg_settings_.LogFormatError) {
+          cfg_settings_.OutputLog("*** Wrong size for live command");
+        }
         return;
       } else {
         auto pl = static_cast<const PacketLive*>(hdr);
@@ -549,7 +576,7 @@ void TrunkLink::ProcessDataToOutlink(
 void TrunkLink::ProcessAckData(uuids::uuid cnt, uint32_t packet_index) {
   if (tracer_) {
     std::stringstream ss;
-    ss << "  Ack packet " << my_packet_symbol_ << packet_index;
+    ss << "  Receive ack to packet " << my_packet_symbol_ << packet_index;
     tracer_->Message(cnt, ss.str());
   }
 
@@ -727,7 +754,7 @@ void TrunkLink::SendDataAck(ConnectID cnt, uint32_t packet_id,
   pkt->PacketIndex = packet_id;
   PacketInfo pi;
   pi.CtxID = cnt;
-  pi.PacketID = packet_id;
+  pi.PacketID = kEmptyPacketID;
   pi.PacketData = buf;
   pi.PacketSize = sizeof(PacketAck);
   SendPacket(socket_index, target, pi);
@@ -741,6 +768,8 @@ TrunkClient::TrunkClient(boost::asio::io_context& ctx,
       points_(trpoints),
       trunk_socket_(ctx, boost::asio::ip::udp::v4()) {
   // Получим информацию о сокете
+  assert(trunk_socket_.is_open());
+  /*
   boost::asio::socket_base::receive_buffer_size option;
   trunk_socket_.get_option(option);
   int buf_size = option.value();
@@ -846,6 +875,9 @@ void TrunkClient::ReceiveTrunkData() {
       [this](boost::system::error_code err, std::size_t data_size) {
         if (err) {
           // TODO Error processing
+          std::string msg = err.message();
+          tout("ERROR client socket: '%s'\n", err.message().c_str());
+          return;
         } else {
           ProcessTrunkData(0, trunk_read_point_, trunk_read_buffer_, data_size);
         }
@@ -881,13 +913,6 @@ void TrunkClient::SendPacket(PacketInfo pkt) {
 
 void TrunkClient::SendPacket(size_t socket_index,
     boost::asio::ip::udp::endpoint target, PacketInfo pkt) {
-  if (tracer_) {
-    std::stringstream ss;
-    ss << "        packet " << my_packet_symbol_ << pkt.PacketID
-       << " sent to trunk";
-    tracer_->Message(pkt.CtxID, ss.str());
-  }
-
   trunk_socket_.async_send_to(
       boost::asio::buffer(pkt.PacketData.get(), pkt.PacketSize), target,
       [pkt, this](boost::system::error_code error, std::size_t /*bytes_sent*/) {
@@ -1100,13 +1125,6 @@ void TrunkServer::SendPacket(PacketInfo pkt) {
 
 void TrunkServer::SendPacket(size_t socket_index,
     boost::asio::ip::udp::endpoint target, PacketInfo pkt) {
-  if (tracer_) {
-    std::stringstream ss;
-    ss << "        packet " << my_packet_symbol_ << pkt.PacketID
-       << " sent to trunk";
-    tracer_->Message(pkt.CtxID, ss.str());
-  }
-
   auto& ts = trunk_sockets_[socket_index];
   ts.socket.async_send_to(
       boost::asio::buffer(pkt.PacketData.get(), pkt.PacketSize), target,
